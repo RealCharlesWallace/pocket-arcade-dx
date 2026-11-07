@@ -4,6 +4,7 @@
   :where(
     html, body, header, main, aside, footer, nav, section, div, p,
     h1, h2, h3, ul, ol, li, button, a, dialog, form, label, input,
+    textarea, table, thead, tbody, tr, th, td, details, summary, hr,
     canvas, kbd, span, svg
   ) {
     box-sizing: border-box;
@@ -122,6 +123,20 @@
 
   .meta-right {
     text-align: right;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+  }
+
+  .meta-visitor {
+    color: var(--bone-dim);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .visitor-num {
+    color: var(--bone);
+    font-weight: 700;
   }
 
   .meta-status {
@@ -560,6 +575,291 @@
   .rom-filename {
     font-size: 16px;
     color: var(--bone-dim);
+  }
+
+  /* Hub Tabs */
+  .hub-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    border-block-end: 1px solid rgba(232, 230, 220, 0.16);
+    padding-block-end: 12px;
+  }
+
+  .hub-tab {
+    background: var(--bg-2);
+    border: 1px solid rgba(232, 230, 220, 0.2);
+    padding: 8px 12px;
+    min-block-size: 36px;
+    font-family: var(--font-pixel);
+    font-size: 9px;
+    color: var(--bone-dim);
+  }
+
+  .hub-tab:hover:not(:disabled) {
+    border-color: var(--accent-bright);
+    color: var(--bone);
+  }
+
+  .hub-tab[aria-pressed="true"] {
+    background: rgba(46, 139, 139, 0.28);
+    border-color: var(--gold);
+    color: var(--gold);
+  }
+
+  .dialog-section {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .dialog-section[hidden] {
+    display: none;
+  }
+
+  /* Responsive Data Tables (following modern-web-guidance responsive-table) */
+  .table-wrapper {
+    overflow: auto;
+    max-inline-size: 100%;
+    max-block-size: min(360px, 60vh);
+    container-type: inline-size;
+    border: 1px solid rgba(232, 230, 220, 0.18);
+  }
+
+  .data-table {
+    inline-size: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 17px;
+  }
+
+  .data-table thead {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 1;
+    background: var(--bg-2);
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 8px 12px;
+    text-align: left;
+    border-block-end: 1px solid rgba(232, 230, 220, 0.1);
+  }
+
+  .data-table thead th {
+    font-family: var(--font-pixel);
+    font-size: 8px;
+    color: var(--gold);
+  }
+
+  .data-table tbody th {
+    position: sticky;
+    inset-inline-start: 0;
+    background: var(--bg-1);
+    font-family: var(--font-pixel);
+    font-size: 9px;
+    color: var(--bone);
+  }
+
+  #history-table {
+    --label-2: "Sessions";
+    --label-3: "Play Time";
+    --label-4: "High Score";
+    --label-5: "Last Played";
+  }
+
+  #leaderboard-table {
+    --label-2: "Game Pak";
+    --label-3: "Score";
+    --label-4: "Source";
+  }
+
+  @container (width < 600px) {
+    .data-table,
+    .data-table thead,
+    .data-table tbody,
+    .data-table tr,
+    .data-table th,
+    .data-table td {
+      display: block;
+    }
+
+    .data-table thead {
+      display: none;
+    }
+
+    .data-table tr {
+      margin-block-end: 1rem;
+      border: 1px solid rgba(232, 230, 220, 0.2);
+    }
+
+    .data-table tbody th {
+      position: sticky;
+      inset-block-start: 0;
+      z-index: 2;
+      background: var(--bg-2);
+    }
+
+    .data-table td:nth-child(2)::before {
+      content: var(--label-2) ": ";
+      color: var(--bone-dim);
+    }
+
+    .data-table td:nth-child(3)::before {
+      content: var(--label-3) ": ";
+      color: var(--bone-dim);
+    }
+
+    .data-table td:nth-child(4)::before {
+      content: var(--label-4) ": ";
+      color: var(--bone-dim);
+    }
+
+    .data-table td:nth-child(5)::before {
+      content: var(--label-5) ": ";
+      color: var(--bone-dim);
+    }
+  }
+
+  /* Badges & Activity Log */
+  .badge-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 8px;
+  }
+
+  .badge-card {
+    background: var(--bg-2);
+    border: 1px solid rgba(232, 230, 220, 0.14);
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    opacity: 0.45;
+  }
+
+  .badge-card.is-unlocked {
+    opacity: 1;
+    border-color: var(--gold);
+    background: rgba(242, 201, 76, 0.1);
+  }
+
+  .badge-title {
+    font-family: var(--font-pixel);
+    font-size: 8px;
+    color: var(--gold);
+  }
+
+  .badge-desc {
+    font-size: 15px;
+    color: var(--bone-dim);
+  }
+
+  .activity-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-block-size: 160px;
+    overflow-y: auto;
+    border: 1px solid rgba(232, 230, 220, 0.14);
+    background: var(--bg-0);
+  }
+
+  .activity-item {
+    padding: 6px 10px;
+    border-block-end: 1px solid rgba(232, 230, 220, 0.08);
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 16px;
+  }
+
+  .activity-time {
+    color: var(--bone-dim);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Memory Pak & Cloud Forms */
+  .hub-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .form-field label {
+    font-size: 17px;
+    color: var(--bone);
+  }
+
+  .inline-field-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .hub-form input,
+  .hub-form textarea {
+    background: var(--bg-0);
+    border: 1px solid rgba(232, 230, 220, 0.3);
+    color: var(--bone);
+    font-family: ui-monospace, monospace;
+    font-size: 1rem;
+    padding: 8px 10px;
+    min-block-size: 42px;
+  }
+
+  .action-btn {
+    background: var(--accent);
+    border: 1px solid var(--accent-bright);
+    color: #fff;
+    font-family: var(--font-pixel);
+    font-size: 8px;
+    padding: 9px 12px;
+    min-block-size: 36px;
+  }
+
+  .action-btn:hover:not(:disabled) {
+    background: var(--accent-bright);
+    color: #081212;
+  }
+
+  .mempak-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .form-feedback {
+    font-size: 16px;
+    color: var(--gold);
+  }
+
+  .hub-divider {
+    border: 0;
+    border-block-start: 1px solid rgba(232, 230, 220, 0.16);
+    margin-block: 6px;
+  }
+
+  .cloud-box {
+    background: rgba(46, 139, 139, 0.08);
+    border: 1px solid rgba(70, 184, 184, 0.3);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .cloud-config-details summary {
+    cursor: pointer;
+    font-size: 16px;
+    color: var(--accent-bright);
   }
 
   /* Touch Controls for Mobile / Coarse Pointers */

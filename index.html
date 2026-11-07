@@ -24,8 +24,10 @@
     </div>
 
     <div class="meta-right">
+      <p class="meta-visitor">
+        <span class="meta-line">You are player/visitor <span class="visitor-num" id="visitor-count">#1,338</span></span>
+      </p>
       <p class="meta-status">
-        <span class="meta-line">Cartridge in slot</span>
         <span class="meta-line meta-cart-name" id="active-cart-label">CARTRIDGE MENU</span>
       </p>
     </div>
@@ -39,11 +41,11 @@
       <span class="tool-label">CARTS</span>
     </button>
 
-    <button type="button" class="tool-btn" id="btn-library" aria-label="Open Cartridge Library and ROM Loader">
+    <button type="button" class="tool-btn" id="btn-library" aria-label="Open Cartridge Library, Play History, and Save Manager">
       <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16">
         <path fill="currentColor" d="M3 1h10v14H3V1zm2 2v4h6V3H5zm1 8h4v2H6v-2z"/>
       </svg>
-      <span class="tool-label">LIBRARY / ROM</span>
+      <span class="tool-label">HUB / HISTORY</span>
     </button>
 
     <button type="button" class="tool-btn" id="btn-shell" aria-label="Cycle Game Boy Shell Color">
@@ -195,35 +197,166 @@
     <div class="dialog-inner">
       <header class="dialog-header">
         <div>
-          <h2 id="dialog-title" class="dialog-title">GAME PAK LIBRARY &amp; ROM SLOT</h2>
-          <p class="dialog-subtitle">Select any cartridge to insert into the 3D Game Boy Color, or load a custom .gb/.gbc ROM file.</p>
+          <h2 id="dialog-title" class="dialog-title">POCKET ARCADE HUB · LIBRARY, HISTORY &amp; CLOUD SAVE</h2>
+          <p class="dialog-subtitle">Switch cartridges, inspect your Play History &amp; Badges, export Memory Pak save codes, or sync via Firebase.</p>
         </div>
         <form method="dialog">
           <button type="submit" class="dialog-close" aria-label="Close library dialog">✕ ESC</button>
         </form>
       </header>
 
-      <section class="dialog-section" aria-labelledby="builtin-heading">
+      <nav class="hub-tabs" aria-label="Console Hub Sections">
+        <button type="button" class="hub-tab" data-tab="library" aria-pressed="true">1. GAME PAKS &amp; ROM</button>
+        <button type="button" class="hub-tab" data-tab="history" aria-pressed="false">2. PLAY HISTORY &amp; BADGES</button>
+        <button type="button" class="hub-tab" data-tab="mempak" aria-pressed="false">3. MEMORY PAK &amp; CLOUD</button>
+      </nav>
+
+      <!-- TAB 1: Library & ROM Loader -->
+      <section class="dialog-section" id="tab-panel-library" aria-labelledby="builtin-heading">
         <h3 id="builtin-heading" class="section-heading">BUILT-IN GAME PAK CARTRIDGES</h3>
         <div class="cart-grid" id="dialog-cart-grid"></div>
+
+        <div class="rom-upload-section">
+          <h3 id="rom-heading" class="section-heading">CUSTOM .GB / .GBC CARTRIDGE SLOT</h3>
+          <p class="rom-desc">
+            Have a homebrew or personal Game Boy (<code>.gb</code> / <code>.gbc</code>) ROM file? Load it below to insert it into the 3D console!
+          </p>
+          <div class="rom-controls">
+            <label for="rom-file-input" class="rom-upload-label">
+              INSERT .GB / .GBC FILE
+            </label>
+            <input
+              type="file"
+              id="rom-file-input"
+              name="rom_file"
+              class="visually-hidden"
+              accept=".gb,.gbc,.bin,application/octet-stream"
+            >
+            <span class="rom-filename" id="rom-filename-status">No custom ROM file loaded (Built-in Demo ROM active)</span>
+          </div>
+        </div>
       </section>
 
-      <section class="dialog-section rom-upload-section" aria-labelledby="rom-heading">
-        <h3 id="rom-heading" class="section-heading">CUSTOM .GB / .GBC CARTRIDGE SLOT</h3>
+      <!-- TAB 2: Play History, Responsive Stats Table, Activity Log & Badges -->
+      <section class="dialog-section" id="tab-panel-history" aria-labelledby="history-heading" hidden>
+        <h3 id="history-heading" class="section-heading">PER-CARTRIDGE PLAY HISTORY</h3>
+        <div tabindex="0" role="region" aria-labelledby="history-table-caption" class="table-wrapper">
+          <table class="data-table" id="history-table">
+            <caption id="history-table-caption" class="visually-hidden">Per-cartridge sessions, play duration, high score, and last played date</caption>
+            <thead>
+              <tr>
+                <th scope="col">Cartridge</th>
+                <th scope="col">Sessions</th>
+                <th scope="col">Play Time</th>
+                <th scope="col">High Score</th>
+                <th scope="col">Last Played</th>
+              </tr>
+            </thead>
+            <tbody id="history-table-body"></tbody>
+          </table>
+        </div>
+
+        <h3 class="section-heading">CONSOLE BADGES &amp; ACHIEVEMENTS</h3>
+        <div class="badge-grid" id="badge-grid"></div>
+
+        <h3 class="section-heading">RECENT ACTIVITY LOG</h3>
+        <ul class="activity-list" id="activity-list" role="list"></ul>
+      </section>
+
+      <!-- TAB 3: Memory Pak Export/Import & Firebase Cloud Sync / Leaderboards -->
+      <section class="dialog-section" id="tab-panel-mempak" aria-labelledby="mempak-heading" hidden>
+        <h3 id="mempak-heading" class="section-heading">PORTABLE MEMORY PAK SAVE CODE (NO ACCOUNT NEEDED)</h3>
         <p class="rom-desc">
-          Have a homebrew or personal Game Boy (<code>.gb</code> / <code>.gbc</code>) ROM file? Load it below to insert it into the 3D console!
+          Copy your Memory Pak Save Code to move your Pocket Monsters party, high scores, and play history between your computer and phone!
         </p>
-        <div class="rom-controls">
-          <label for="rom-file-input" class="rom-upload-label">
-            INSERT .GB / .GBC FILE
-          </label>
-          <input
-            type="file"
-            id="rom-file-input"
-            class="visually-hidden"
-            accept=".gb,.gbc,.bin,application/octet-stream"
-          >
-          <span class="rom-filename" id="rom-filename-status">No custom ROM file loaded (Built-in Demo ROM active)</span>
+
+        <form id="callsign-form" class="hub-form" action="#callsign" method="POST">
+          <div class="form-field">
+            <label for="player-callsign-input">Player Callsign (shown on Leaderboards):</label>
+            <div class="inline-field-row">
+              <input
+                type="text"
+                id="player-callsign-input"
+                name="callsign"
+                maxlength="20"
+                autocomplete="username"
+                autocorrect="off"
+                autocapitalize="off"
+                spellcheck="false"
+                required
+              >
+              <button type="submit" class="action-btn">SAVE CALLSIGN</button>
+            </div>
+          </div>
+        </form>
+
+        <div class="mempak-actions">
+          <button type="button" class="action-btn" id="btn-copy-pak">COPY MEMORY PAK CODE</button>
+          <button type="button" class="action-btn" id="btn-download-pak">DOWNLOAD .JSON SAVE</button>
+        </div>
+
+        <form id="mempak-import-form" class="hub-form" action="#import-pak" method="POST">
+          <div class="form-field">
+            <label for="mempak-code-input">Memory Pak Save Code (<code>GBC-PAK-...</code>):</label>
+            <textarea
+              id="mempak-code-input"
+              name="mempak_code"
+              rows="3"
+              autocorrect="off"
+              autocapitalize="off"
+              spellcheck="false"
+              aria-describedby="mempak-feedback"
+            ></textarea>
+            <span id="mempak-feedback" class="form-feedback" aria-live="polite">Ready to export or import.</span>
+          </div>
+          <button type="submit" class="action-btn">RESTORE FROM MEMORY PAK CODE</button>
+        </form>
+
+        <hr class="hub-divider">
+
+        <h3 class="section-heading">CLOUD SYNC &amp; GLOBAL LEADERBOARD (FIREBASE)</h3>
+        <div class="cloud-box">
+          <p class="rom-desc" id="cloud-status-text">Checking cloud status...</p>
+          <div class="mempak-actions">
+            <button type="button" class="action-btn" id="btn-google-login">SIGN IN WITH GOOGLE</button>
+            <button type="button" class="action-btn" id="btn-guest-login">CLOUD GUEST SYNC</button>
+            <button type="button" class="action-btn" id="btn-cloud-sync-now">SYNC NOW</button>
+            <button type="button" class="action-btn" id="btn-cloud-logout" hidden>SIGN OUT</button>
+          </div>
+
+          <details class="cloud-config-details">
+            <summary>Connect Your Own Firebase Project (Free Spark Plan)</summary>
+            <form id="firebase-config-form" class="hub-form" action="#firebase-config" method="POST">
+              <div class="form-field">
+                <label for="firebase-config-input">Paste your <code>firebaseConfig</code> object from Firebase Console:</label>
+                <textarea
+                  id="firebase-config-input"
+                  name="firebase_config"
+                  rows="4"
+                  autocorrect="off"
+                  autocapitalize="off"
+                  spellcheck="false"
+                ></textarea>
+              </div>
+              <button type="submit" class="action-btn">CONNECT FIREBASE PROJECT</button>
+            </form>
+          </details>
+        </div>
+
+        <h3 class="section-heading">ARCADE LEADERBOARD (TOP SCORES)</h3>
+        <div tabindex="0" role="region" aria-labelledby="leaderboard-caption" class="table-wrapper">
+          <table class="data-table" id="leaderboard-table">
+            <caption id="leaderboard-caption" class="visually-hidden">Top global and local high scores</caption>
+            <thead>
+              <tr>
+                <th scope="col">Player</th>
+                <th scope="col">Game Pak</th>
+                <th scope="col">Score</th>
+                <th scope="col">Source</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboard-table-body"></tbody>
+          </table>
         </div>
       </section>
     </div>

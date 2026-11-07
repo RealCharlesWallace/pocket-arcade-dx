@@ -1,0 +1,248 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// This security rules file assumes the following data structures:
+//
+// Collection: users
+// Document ID: {userId} (matches Firebase Auth UID)
+// Fields:
+//   - uid: string (required, immutable, must equal userId and request.auth.uid, max 128 chars) - Owner UID
+//   - displayName: string (required, 0 to 40 chars) - Player display name / arcade handle
+//   - updatedAt: timestamp | int | string (required) - Last sync timestamp
+//   - createdAt: timestamp | int | string (optional, immutable) - Account creation timestamp
+//   - highScores: map (optional, max 50 keys) - Per-game high score map
+//   - gameSaves: map (optional, max 50 keys) - Per-game serialized save states
+//   - playStats: map (optional, max 50 keys) - Per-game play counters and time played
+//   - achievements: list (optional, max 200 items) - Unlocked achievement IDs
+//   - settings: map (optional, max 50 keys) - User preferences (shell theme, audio, etc.)
+//   - photoURL: string (optional, valid http/https URL, max 500 chars) - Avatar URL
+//
+// Collection: leaderboards/{gameId}/scores
+// Document ID: {userId} (matches Firebase Auth UID)
+// Fields:
+//   - score: int (required, 0 <= score <= 10000000, non-decreasing on update) - High score value
+//   - displayName: string (required, 1 to 30 chars) - Player arcade display name
+//   - uid: string (optional, immutable, must equal userId and request.auth.uid, max 128 chars) - Owner UID
+//   - gameId: string (optional, immutable, must equal gameId path param, max 50 chars) - Cartridge game ID
+//   - updatedAt: timestamp | int | string (optional) - Score submission timestamp
+//   - createdAt: timestamp | int | string (optional, immutable) - Initial score timestamp
+//
+// Collection: meta
+// Document ID: visitors
+// Fields:
+//   - count: int (required, 0 <= count <= 1000000000, increments by +1 on update) - Global visitor counter
+//   - updatedAt: timestamp | int | string (required) - Last counter increment timestamp
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Check if the user is authenticated (including anonymous auth)
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if user owns the resource based on path parameter userId
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Check if user is owner based on existing document's uid field
+    function isDocOwner() {
+      return isAuthenticated() &&
+        (!('uid' in resource.data) || request.auth.uid == resource.data.uid);
+    }
+
+    // Verify UID hasn't been tampered with on create
+    function uidUnchanged() {
+      return !('uid' in request.resource.data) ||
+        request.resource.data.uid == request.auth.uid;
+    }
+
+    // Ensure uid field is not modified on update
+    function uidNotModified() {
+      return !('uid' in request.resource.data) ||
+        !('uid' in resource.data) ||
+        request.resource.data.uid == resource.data.uid;
+    }
+
+    // Validate required fields exist
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // Validate that the document contains only the allowed fields
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // Validate string length
+    function validStringLength(field, minLen, maxLen) {
+      return request.resource.data[field] is string &&
+        request.resource.data[field].size() >= minLen &&
+        request.resource.data[field].size() <= maxLen;
+    }
+
+    // Validate URL format (must start with https:// or http://)
+    function isValidUrl(url) {
+      return url is string &&
+        url.size() <= 500 &&
+        (url.matches("^https://.*") || url.matches("^http://.*"));
+    }
+
+    // Validate ISO 8601 date string format
+    function isValidDateString(dateStr) {
+      return dateStr is string &&
+        dateStr.size() <= 40 &&
+        dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    // Validate timestamp value (Firestore timestamp, epoch milliseconds int, or ISO string)
+    function isValidTimestampValue(val) {
+      return val is timestamp ||
+        (val is int && val >= 0 && val <= 9999999999999) ||
+        isValidDateString(val);
+    }
+
+    // Validate that a list is a list and enforces size limits
+    function isValidList(list, maxSize) {
+      return list is list && list.size() <= maxSize;
+    }
+
+    // Validate that a map is a map and enforces key count limits
+    function isValidBoundedMap(mapData, maxKeys) {
+      return mapData is map && mapData.size() <= maxKeys;
+    }
+
+    // Ensure an optional immutable field is not modified if it already exists on resource.data
+    function isImmutableFieldPreserved(field) {
+      return !(field in resource.data) ||
+        (field in request.resource.data && request.resource.data[field] == resource.data[field]);
+    }
+
+    // ===============================================================
+    // Domain Validators (Called on BOTH create and update)
+    // ===============================================================
+
+    function isValidUserProfile(data, userId) {
+      return hasOnlyAllowedFields([
+          'uid',
+          'displayName',
+          'updatedAt',
+          'createdAt',
+          'highScores',
+          'gameSaves',
+          'playStats',
+          'achievements',
+          'settings',
+          'photoURL'
+        ]) &&
+        hasRequiredFields(['uid', 'displayName', 'updatedAt']) &&
+        data.uid is string &&
+        data.uid == userId &&
+        data.uid.size() >= 1 &&
+        data.uid.size() <= 128 &&
+        data.displayName is string &&
+        data.displayName.size() <= 40 &&
+        isValidTimestampValue(data.updatedAt) &&
+        (!('createdAt' in data) || isValidTimestampValue(data.createdAt)) &&
+        (!('highScores' in data) || isValidBoundedMap(data.highScores, 50)) &&
+        (!('gameSaves' in data) || isValidBoundedMap(data.gameSaves, 50)) &&
+        (!('playStats' in data) || isValidBoundedMap(data.playStats, 50)) &&
+        (!('achievements' in data) || isValidList(data.achievements, 200)) &&
+        (!('settings' in data) || isValidBoundedMap(data.settings, 50)) &&
+        (!('photoURL' in data) || isValidUrl(data.photoURL));
+    }
+
+    function isValidLeaderboardScore(data, gameId, userId) {
+      return hasOnlyAllowedFields([
+          'score',
+          'displayName',
+          'uid',
+          'gameId',
+          'updatedAt',
+          'createdAt'
+        ]) &&
+        hasRequiredFields(['score', 'displayName']) &&
+        gameId.size() >= 1 &&
+        gameId.size() <= 50 &&
+        data.score is int &&
+        data.score >= 0 &&
+        data.score <= 10000000 &&
+        data.displayName is string &&
+        data.displayName.size() >= 1 &&
+        data.displayName.size() <= 30 &&
+        (!('uid' in data) || (data.uid is string && data.uid == userId && data.uid.size() <= 128)) &&
+        (!('gameId' in data) || (data.gameId is string && data.gameId == gameId && data.gameId.size() <= 50)) &&
+        (!('updatedAt' in data) || isValidTimestampValue(data.updatedAt)) &&
+        (!('createdAt' in data) || isValidTimestampValue(data.createdAt));
+    }
+
+    function isValidVisitorCounter(data) {
+      return hasOnlyAllowedFields(['count', 'updatedAt']) &&
+        hasRequiredFields(['count', 'updatedAt']) &&
+        data.count is int &&
+        data.count >= 0 &&
+        data.count <= 1000000000 &&
+        isValidTimestampValue(data.updatedAt);
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    // 1. User Save State & Play History
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) &&
+        uidUnchanged() &&
+        isValidUserProfile(request.resource.data, userId);
+      allow update: if isOwner(userId) &&
+        isDocOwner() &&
+        uidNotModified() &&
+        isImmutableFieldPreserved('createdAt') &&
+        isValidUserProfile(request.resource.data, userId);
+      allow delete: if false;
+    }
+
+    // 2. Global Arcade Leaderboards
+    match /leaderboards/{gameId}/scores/{userId} {
+      allow read: if true;
+      allow create: if isOwner(userId) &&
+        uidUnchanged() &&
+        isValidLeaderboardScore(request.resource.data, gameId, userId);
+      allow update: if isOwner(userId) &&
+        isDocOwner() &&
+        uidNotModified() &&
+        isImmutableFieldPreserved('createdAt') &&
+        isImmutableFieldPreserved('gameId') &&
+        isValidLeaderboardScore(request.resource.data, gameId, userId) &&
+        request.resource.data.score >= resource.data.score;
+      allow delete: if false;
+    }
+
+    // 3. Global Visitor Counter ("You are player #...")
+    match /meta/visitors {
+      allow get: if true;
+      allow create: if isAuthenticated() &&
+        isValidVisitorCounter(request.resource.data);
+      allow update: if isAuthenticated() &&
+        isValidVisitorCounter(request.resource.data) &&
+        request.resource.data.count == resource.data.count + 1;
+      allow delete: if false;
+    }
+
+    // Default deny all other paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

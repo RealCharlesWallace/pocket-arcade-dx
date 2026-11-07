@@ -46,6 +46,7 @@ export class GBCSystemOS {
     this.phase = 'BOOT';
     this.bootTimer = 1.65;
     this.context.audio.playBootChime();
+    this.context.storage.unlockAchievement('first-boot');
     this.onCartridgeChanged(this.getSelectedCartridge());
   }
 
@@ -78,6 +79,7 @@ export class GBCSystemOS {
     this.activeCartridge = cart;
     this.phase = 'PLAYING';
     this.transitionTimer = 0.3;
+    this.context.storage.recordGameLaunch(cart.id, cart.title);
     cart.init(this.context);
     this.onCartridgeChanged(cart);
   }
@@ -152,6 +154,7 @@ export class GBCSystemOS {
         this.phase = 'PAUSED';
         return;
       }
+      this.context.storage.recordPlayTime(this.activeCartridge.id, dt);
       this.activeCartridge.update(dt, input);
     }
   }

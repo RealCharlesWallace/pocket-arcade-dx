@@ -1,7 +1,8 @@
 import { ChiptuneSynth } from './core/audio';
+import { CloudSyncService } from './core/cloud';
 import { InputManager } from './core/input';
 import { GBC_HEIGHT, GBC_SCALE, GBC_WIDTH } from './core/pixel-renderer';
-import { CartridgeStorage } from './core/storage';
+import { ACHIEVEMENTS, CartridgeStorage, formatDuration } from './core/storage';
 import { CARTRIDGE_REGISTRY } from './games/registry';
 import { romLoaderCartridge } from './games/rom-loader';
 import { GBCSystemOS } from './games/system-os';
@@ -10,6 +11,9 @@ import { StageScene } from './stage/stage-scene';
 
 function bootstrap(): void {
   const storage = new CartridgeStorage();
+  const gameIds = CARTRIDGE_REGISTRY.map((c) => c.id);
+  const cloud = new CloudSyncService(storage, gameIds);
+
   const initialMuted = storage.getSetting('muted', 'false') === 'true';
   const audio = new ChiptuneSynth(initialMuted);
   const input = new InputManager();
@@ -26,6 +30,7 @@ function bootstrap(): void {
   const gateEl = document.getElementById('gate')!;
   const btnPowerGate = document.getElementById('btn-power-gate')!;
   const activeCartLabel = document.getElementById('active-cart-label')!;
+  const visitorCountEl = document.getElementById('visitor-count')!;
   const liveStatus = document.getElementById('live-status')!;
 
   const btnEject = document.getElementById('btn-eject')!;
@@ -43,6 +48,34 @@ function bootstrap(): void {
   const dialogCartGrid = document.getElementById('dialog-cart-grid')!;
   const romFileInput = document.getElementById('rom-file-input') as HTMLInputElement;
   const romFilenameStatus = document.getElementById('rom-filename-status')!;
+
+  // Hub Tabs & Panels
+  const tabBtns = document.querySelectorAll<HTMLButtonElement>('.hub-tab');
+  const panelLibrary = document.getElementById('tab-panel-library')!;
+  const panelHistory = document.getElementById('tab-panel-history')!;
+  const panelMempak = document.getElementById('tab-panel-mempak')!;
+
+  const historyTableBody = document.getElementById('history-table-body')!;
+  const badgeGrid = document.getElementById('badge-grid')!;
+  const activityList = document.getElementById('activity-list')!;
+
+  // Memory Pak & Cloud Elements
+  const callsignForm = document.getElementById('callsign-form') as HTMLFormElement;
+  const callsignInput = document.getElementById('player-callsign-input') as HTMLInputElement;
+  const btnCopyPak = document.getElementById('btn-copy-pak')!;
+  const btnDownloadPak = document.getElementById('btn-download-pak')!;
+  const mempakImportForm = document.getElementById('mempak-import-form') as HTMLFormElement;
+  const mempakCodeInput = document.getElementById('mempak-code-input') as HTMLTextAreaElement;
+  const mempakFeedback = document.getElementById('mempak-feedback')!;
+
+  const cloudStatusText = document.getElementById('cloud-status-text')!;
+  const btnGoogleLogin = document.getElementById('btn-google-login')!;
+  const btnGuestLogin = document.getElementById('btn-guest-login')!;
+  const btnCloudSyncNow = document.getElementById('btn-cloud-sync-now')!;
+  const btnCloudLogout = document.getElementById('btn-cloud-logout')!;
+  const firebaseConfigForm = document.getElementById('firebase-config-form') as HTMLFormElement;
+  const firebaseConfigInput = document.getElementById('firebase-config-input') as HTMLTextAreaElement;
+  const leaderboardTableBody = document.getElementById('leaderboard-table-body')!;
 
   // Mandatory light-dismiss fallback for browsers without native <dialog closedby="any">
   if (!('closedBy' in HTMLDialogElement.prototype)) {
@@ -116,6 +149,18 @@ function bootstrap(): void {
     stageContainer.focus();
   });
 
+  // Visitor Counter initialization (sadok.mx style)
+  cloud.recordAndGetVisitorCount().then((count) => {
+    visitorCountEl.textContent = `#${count.toLocaleString('en-US')}`;
+  });
+
+  // Auto-push to cloud when local high scores or saves mutate
+  storage.onStateMutated(() => {
+    if (cloud.getUser()) {
+      cloud.pushToCloud().catch(() => {});
+    }
+  });
+
   // Shell Theme initialization & cycling
   let themeIdx = Math.max(
     0,
@@ -166,7 +211,28 @@ function bootstrap(): void {
     systemOS.returnToCarousel();
   });
 
-  // Populate Cartridge Library Modal Dialog
+  // --- Hub Modal Dialog Tabs & Rendering ---
+
+  const switchHubTab = (tabName: string) => {
+    tabBtns.forEach((btn) => {
+      btn.setAttribute('aria-pressed', String(btn.dataset.tab === tabName));
+    });
+    panelLibrary.toggleAttribute('hidden', tabName !== 'library');
+    panelHistory.toggleAttribute('hidden', tabName !== 'history');
+    panelMempak.toggleAttribute('hidden', tabName !== 'mempak');
+
+    if (tabName === 'library') renderLibraryCards();
+    if (tabName === 'history') renderPlayHistoryTab();
+    if (tabName === 'mempak') renderMempakAndCloudTab();
+  };
+
+  tabBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      switchHubTab(btn.dataset.tab ?? 'library');
+      audio.playButtonClick();
+    });
+  });
+
   const renderLibraryCards = () => {
     dialogCartGrid.innerHTML = '';
     for (const cart of CARTRIDGE_REGISTRY) {
@@ -174,6 +240,7 @@ function bootstrap(): void {
       btn.type = 'button';
       btn.className = 'cart-card';
       const hi = storage.getHighScore(cart.id);
+      const stat = storage.getGamePlayStat(cart.id);
 
       const top = document.createElement('div');
       top.className = 'cart-card-top';
@@ -190,7 +257,7 @@ function bootstrap(): void {
 
       const sub = document.createElement('div');
       sub.className = 'cart-card-sub';
-      sub.textContent = `${cart.subtitle} · Best: ${hi}`;
+      sub.textContent = `${cart.subtitle} · Best: ${hi} · Played: ${formatDuration(stat.totalSeconds)}`;
 
       btn.append(top, sub);
       btn.addEventListener('click', () => {
@@ -202,9 +269,206 @@ function bootstrap(): void {
     }
   };
 
+  const renderPlayHistoryTab = () => {
+    historyTableBody.innerHTML = '';
+    for (const cart of CARTRIDGE_REGISTRY) {
+      const stat = storage.getGamePlayStat(cart.id);
+      const hi = storage.getHighScore(cart.id);
+
+      const tr = document.createElement('tr');
+      const th = document.createElement('th');
+      th.scope = 'row';
+      th.textContent = cart.title;
+
+      const tdSessions = document.createElement('td');
+      tdSessions.textContent = String(stat.sessions);
+
+      const tdTime = document.createElement('td');
+      tdTime.textContent = formatDuration(stat.totalSeconds);
+
+      const tdScore = document.createElement('td');
+      tdScore.textContent = hi.toLocaleString('en-US');
+
+      const tdLast = document.createElement('td');
+      tdLast.textContent = stat.lastPlayedIso ? stat.lastPlayedIso.slice(0, 10) : 'Never';
+
+      tr.append(th, tdSessions, tdTime, tdScore, tdLast);
+      historyTableBody.appendChild(tr);
+    }
+
+    // Achievements / Badges
+    badgeGrid.innerHTML = '';
+    const unlocked = storage.getUnlockedAchievements();
+    for (const ach of ACHIEVEMENTS) {
+      const isUnl = unlocked.includes(ach.id);
+      const card = document.createElement('div');
+      card.className = `badge-card${isUnl ? ' is-unlocked' : ''}`;
+
+      const title = document.createElement('div');
+      title.className = 'badge-title';
+      title.textContent = `${ach.icon} ${ach.title} ${isUnl ? '✓' : '(LOCKED)'}`;
+
+      const desc = document.createElement('div');
+      desc.className = 'badge-desc';
+      desc.textContent = ach.description;
+
+      card.append(title, desc);
+      badgeGrid.appendChild(card);
+    }
+
+    // Recent Activity Log
+    activityList.innerHTML = '';
+    const logs = storage.getActivityLog();
+    if (logs.length === 0) {
+      const li = document.createElement('li');
+      li.className = 'activity-item';
+      li.textContent = 'No games launched yet — power on the console to start logging history!';
+      activityList.appendChild(li);
+    } else {
+      for (const entry of logs) {
+        const li = document.createElement('li');
+        li.className = 'activity-item';
+
+        const msg = document.createElement('span');
+        msg.textContent = entry.message;
+
+        const time = document.createElement('span');
+        time.className = 'activity-time';
+        time.textContent = entry.timestampIso.slice(11, 19);
+
+        li.append(msg, time);
+        activityList.appendChild(li);
+      }
+    }
+  };
+
+  const renderMempakAndCloudTab = async () => {
+    callsignInput.value = storage.getCallsign();
+    mempakCodeInput.value = storage.exportMemoryPakCode(gameIds);
+
+    const user = cloud.getUser();
+    if (!cloud.isConfigured()) {
+      cloudStatusText.textContent =
+        'Mode: Local Storage + Memory Pak Save Code active. Connect a Firebase project below to enable live Cloud Sync.';
+      btnCloudLogout.toggleAttribute('hidden', true);
+    } else if (user) {
+      cloudStatusText.textContent = `Connected to Firebase Cloud (${user.isAnonymous ? 'Guest UID: ' + user.uid.slice(0, 8) : user.email ?? user.displayName}) — Auto-Sync Active!`;
+      btnCloudLogout.toggleAttribute('hidden', false);
+    } else {
+      cloudStatusText.textContent = 'Firebase Ready! Sign in with Google or Cloud Guest to sync across devices.';
+      btnCloudLogout.toggleAttribute('hidden', true);
+    }
+
+    // Populate Leaderboard Table across games
+    leaderboardTableBody.innerHTML = '';
+    const featuredGames = CARTRIDGE_REGISTRY.slice(0, 3);
+    for (const cart of featuredGames) {
+      const entries = await cloud.fetchLeaderboard(cart.id);
+      for (const e of entries.slice(0, 2)) {
+        const tr = document.createElement('tr');
+        const th = document.createElement('th');
+        th.scope = 'row';
+        th.textContent = e.displayName;
+
+        const tdGame = document.createElement('td');
+        tdGame.textContent = cart.title;
+
+        const tdScore = document.createElement('td');
+        tdScore.textContent = e.score.toLocaleString('en-US');
+
+        const tdSrc = document.createElement('td');
+        tdSrc.textContent = e.updatedAtIso;
+
+        tr.append(th, tdGame, tdScore, tdSrc);
+        leaderboardTableBody.appendChild(tr);
+      }
+    }
+  };
+
   btnLibrary.addEventListener('click', () => {
     renderLibraryCards();
     cartDialog.showModal();
+  });
+
+  // Memory Pak & Callsign Handlers
+  callsignForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    storage.setCallsign(callsignInput.value);
+    mempakFeedback.textContent = `Callsign updated to "${storage.getCallsign()}"!`;
+    mempakCodeInput.value = storage.exportMemoryPakCode(gameIds);
+  });
+
+  btnCopyPak.addEventListener('click', async () => {
+    const code = storage.exportMemoryPakCode(gameIds);
+    mempakCodeInput.value = code;
+    try {
+      await navigator.clipboard.writeText(code);
+      mempakFeedback.textContent = 'Copied Memory Pak Save Code to clipboard!';
+    } catch {
+      mempakCodeInput.select();
+      mempakFeedback.textContent = 'Selected code! Press Cmd+C / Ctrl+C to copy.';
+    }
+  });
+
+  btnDownloadPak.addEventListener('click', () => {
+    const payload = storage.buildPayload(gameIds);
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pocket-arcade-save-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    mempakFeedback.textContent = 'Downloaded .json save backup!';
+  });
+
+  mempakImportForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const res = storage.importMemoryPakCode(mempakCodeInput.value);
+    mempakFeedback.textContent = res.message;
+    if (res.ok) {
+      audio.playPowerUp();
+    }
+  });
+
+  // Cloud Sync Handlers
+  cloud.onStatusChange(() => {
+    if (cartDialog.open && !panelMempak.hasAttribute('hidden')) {
+      renderMempakAndCloudTab();
+    }
+  });
+
+  btnGoogleLogin.addEventListener('click', async () => {
+    const res = await cloud.signInWithGoogle();
+    cloudStatusText.textContent = res.message;
+  });
+
+  btnGuestLogin.addEventListener('click', async () => {
+    const res = await cloud.signInGuestCloud();
+    cloudStatusText.textContent = res.message;
+  });
+
+  btnCloudSyncNow.addEventListener('click', async () => {
+    if (!cloud.getUser()) {
+      cloudStatusText.textContent = 'Sign in with Google or Cloud Guest first to sync!';
+      return;
+    }
+    await cloud.pullFromCloud();
+    const ok = await cloud.pushToCloud();
+    cloudStatusText.textContent = ok ? 'Synced play history & scores to Firestore!' : 'Cloud sync failed.';
+    renderMempakAndCloudTab();
+  });
+
+  btnCloudLogout.addEventListener('click', async () => {
+    await cloud.signOutCloud();
+    renderMempakAndCloudTab();
+  });
+
+  firebaseConfigForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const res = cloud.saveCustomFirebaseConfig(firebaseConfigInput.value);
+    cloudStatusText.textContent = res.message;
+    renderMempakAndCloudTab();
   });
 
   // Custom .gb / .gbc ROM file input handler
