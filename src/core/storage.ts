@@ -159,7 +159,7 @@ export class CartridgeStorage {
 
   recordPlayTime(gameId: string, dtSeconds: number): void {
     this.floatSecondsAccum += dtSeconds;
-    if (this.floatSecondsAccum < 5) return; // flush every 5 seconds
+    if (this.floatSecondsAccum < 1) return; // flush every 1 second
     const whole = Math.floor(this.floatSecondsAccum);
     this.floatSecondsAccum -= whole;
 

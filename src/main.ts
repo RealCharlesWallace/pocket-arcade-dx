@@ -179,6 +179,7 @@ function bootstrap(): void {
     themeIdx = (themeIdx + 1) % SHELL_THEMES.length;
     applyShellTheme(themeIdx);
     audio.playButtonClick();
+    stageContainer.focus();
   });
 
   // Mute button UI sync
@@ -195,6 +196,7 @@ function bootstrap(): void {
   btnMute.addEventListener('click', () => {
     audio.setMuted(!audio.isMuted());
     syncMuteUI();
+    stageContainer.focus();
   });
 
   // Camera Zoom Toggle
@@ -203,12 +205,18 @@ function bootstrap(): void {
     stageScene.setZoomedIn(nextZoom);
     btnZoom.setAttribute('aria-pressed', String(nextZoom));
     audio.playButtonClick();
+    stageContainer.focus();
   });
 
   // Eject / Return to Cartridge Carousel Menu
   btnEject.addEventListener('click', () => {
     powerOnConsole();
     systemOS.returnToCarousel();
+    stageContainer.focus();
+  });
+
+  cartDialog.addEventListener('close', () => {
+    stageContainer.focus();
   });
 
   // --- Hub Modal Dialog Tabs & Rendering ---

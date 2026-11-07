@@ -289,6 +289,7 @@ export class GameBoyColor3D {
     // --- A & B Buttons ---
     const btnGeo = new THREE.CylinderGeometry(0.21, 0.22, 0.16, 28);
     btnGeo.rotateX(Math.PI / 2);
+    btnGeo.rotateZ(Math.PI / 2);
 
     const matA = new THREE.MeshStandardMaterial({
       map: this.createButtonLabelTexture('A', '#23262c'),

@@ -240,15 +240,15 @@ export class GBCSystemOS {
     );
 
     // Physical Cartridge Shell Preview Card in Center
-    const cardX = 16;
+    const cardX = 12;
     const cardY = 21;
-    const cardW = 128;
+    const cardW = 136;
     const cardH = 78;
 
     // Left / Right Carousel Arrows
-    const arrowBounce = Math.round(Math.sin(this.time * 6) * 1.5);
-    drawPixelText(ctx, '<', 5 - arrowBounce, 56, { color: '#f8e048', size: 8 });
-    drawPixelText(ctx, '>', 148 + arrowBounce, 56, { color: '#f8e048', size: 8 });
+    const arrowBounce = Math.round(Math.sin(this.time * 6) * 1.2);
+    drawPixelText(ctx, '<', 3 - arrowBounce, 56, { color: '#f8e048', size: 8 });
+    drawPixelText(ctx, '>', 151 + arrowBounce, 56, { color: '#f8e048', size: 8 });
 
     // Cartridge Outer Plastic Shell
     ctx.fillStyle = cart.cartridgeColor;
@@ -268,28 +268,28 @@ export class GBCSystemOS {
     ctx.strokeRect(cardX + 6.5, cardY + 11.5, cardW - 13, cardH - 17);
 
     // Animated Game Preview Icon (36x32)
-    cart.renderPreviewIcon(ctx, cardX + 12, cardY + 18, 36, 32, this.time);
+    cart.renderPreviewIcon(ctx, cardX + 10, cardY + 18, 36, 32, this.time);
     ctx.strokeStyle = '#ffffff';
-    ctx.strokeRect(cardX + 11.5, cardY + 17.5, 37, 33);
+    ctx.strokeRect(cardX + 9.5, cardY + 17.5, 37, 33);
 
     // Title, Subtitle, Genre & High Score on Label
-    drawPixelText(ctx, cart.title, cardX + 54, cardY + 18, { color: '#ffffff', size: 5 });
-    drawPixelText(ctx, cart.subtitle, cardX + 54, cardY + 28, { color: cart.accentColor, size: 4 });
+    const titleSize = cart.title.length > 14 ? 4.2 : 4.6;
+    drawPixelText(ctx, cart.title, cardX + 51, cardY + 18, { color: '#ffffff', size: titleSize });
+    drawPixelText(ctx, cart.subtitle, cardX + 51, cardY + 28, { color: cart.accentColor, size: 4 });
 
     ctx.fillStyle = cart.accentColor;
-    ctx.fillRect(cardX + 54, cardY + 37, 38, 9);
-    drawPixelText(ctx, cart.genre, cardX + 73, cardY + 39, {
+    ctx.fillRect(cardX + 51, cardY + 37, 38, 9);
+    drawPixelText(ctx, cart.genre, cardX + 70, cardY + 39, {
       color: '#101418',
       size: 4,
       align: 'center',
     });
 
-    drawPixelText(ctx, `BEST: ${hiScore}`, cardX + 54, cardY + 50, { color: '#f8e048', size: 4 });
+    drawPixelText(ctx, `BEST: ${hiScore}`, cardX + 51, cardY + 50, { color: '#f8e048', size: 4 });
 
     // Description & Launch Prompt Box at Bottom
     drawGBCBox(ctx, 4, 103, 152, 37, { bg: '#182030', borderOuter: cart.accentColor, borderInner: '#384868' });
-    const desc1 = cart.description.slice(0, 32);
-    const desc2 = cart.description.slice(32, 64);
+    const [desc1, desc2] = this.wrapTextTwoLines(cart.description, 32);
     drawPixelText(ctx, desc1, 80, 108, { color: '#d8e4f0', size: 4, align: 'center' });
     if (desc2) {
       drawPixelText(ctx, desc2, 80, 116, { color: '#d8e4f0', size: 4, align: 'center' });
@@ -301,6 +301,24 @@ export class GBCSystemOS {
       size: 5,
       align: 'center',
     });
+  }
+
+  private wrapTextTwoLines(text: string, maxChars: number): [string, string] {
+    const words = text.split(' ');
+    let line1 = '';
+    let line2 = '';
+    for (const word of words) {
+      const candidate = line1 ? `${line1} ${word}` : word;
+      if (candidate.length <= maxChars && !line2) {
+        line1 = candidate;
+      } else {
+        const candidate2 = line2 ? `${line2} ${word}` : word;
+        if (candidate2.length <= maxChars) {
+          line2 = candidate2;
+        }
+      }
+    }
+    return [line1, line2];
   }
 
   private renderPauseOverlay(ctx: CanvasRenderingContext2D): void {

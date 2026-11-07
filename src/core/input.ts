@@ -25,6 +25,7 @@ const KEY_MAP: Record<string, GBCButton> = {
 export class InputManager {
   private keyHeld: Record<GBCButton, boolean> = this.emptyRecord();
   private pointerHeld: Record<GBCButton, boolean> = this.emptyRecord();
+  private latchedPress: Record<GBCButton, boolean> = this.emptyRecord();
   private prevCombined: Record<GBCButton, boolean> = this.emptyRecord();
   private onButtonChangeCallbacks: Array<(btn: GBCButton, pressed: boolean) => void> = [];
   private onAnyInputCallbacks: Array<() => void> = [];
@@ -39,13 +40,14 @@ export class InputManager {
       const mapped = KEY_MAP[e.code];
       if (!mapped) return;
 
-      // Prevent browser scrolling or page navigation for game keys
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Backspace'].includes(e.code)) {
+      // Prevent browser scrolling or accidental button activation for game keys
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Backspace', 'Enter'].includes(e.code)) {
         e.preventDefault();
       }
 
       if (!this.keyHeld[mapped]) {
         this.keyHeld[mapped] = true;
+        this.latchedPress[mapped] = true;
         this.emitButtonChange(mapped, true);
       }
     });
@@ -107,7 +109,10 @@ export class InputManager {
   }
 
   setVirtualButton(btn: GBCButton, pressed: boolean): void {
-    if (pressed) this.notifyAnyInput();
+    if (pressed) {
+      this.notifyAnyInput();
+      this.latchedPress[btn] = true;
+    }
     if (this.pointerHeld[btn] !== pressed) {
       this.pointerHeld[btn] = pressed;
       this.emitButtonChange(btn, pressed || this.keyHeld[btn]);
@@ -141,7 +146,8 @@ export class InputManager {
     const padHeld = this.pollGamepad();
 
     for (const b of ALL_BUTTONS) {
-      const isNowHeld = Boolean(this.keyHeld[b] || this.pointerHeld[b] || padHeld[b]);
+      const isNowHeld = Boolean(this.keyHeld[b] || this.pointerHeld[b] || padHeld[b] || this.latchedPress[b]);
+      this.latchedPress[b] = false;
       held[b] = isNowHeld;
       justPressed[b] = isNowHeld && !this.prevCombined[b];
       justReleased[b] = !isNowHeld && this.prevCombined[b];

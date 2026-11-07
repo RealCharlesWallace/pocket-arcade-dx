@@ -249,8 +249,8 @@ export const linksQuestCartridge: GameCartridge = {
     drawPixelText(ctx, `GEM:${state.rupees}`, 98, 5, { color: '#58f888', size: 5 });
 
     if (state.bannerTimer > 0) {
-      drawGBCBox(ctx, 16, 114, 128, 24);
-      drawPixelText(ctx, state.bannerText, 80, 123, { color: '#182018', size: 5, align: 'center' });
+      drawGBCBox(ctx, 4, 114, 152, 24);
+      drawPixelText(ctx, state.bannerText, 80, 123, { color: '#182018', size: 4, align: 'center' });
     }
 
     if (state.wonDungeon || state.hp <= 0) {
