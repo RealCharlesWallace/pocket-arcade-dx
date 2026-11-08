@@ -1,4 +1,6 @@
 import type { GameCartridge } from '../core/types';
+import { froggerCartridge } from './frogger';
+import { kirbyTiltCartridge } from './kirby-tilt-n-tumble';
 import { linksQuestCartridge } from './links-quest';
 import { pocketBrawlCartridge } from './pocket-brawl';
 import { pokemonBlueCartridge, pokemonRedCartridge } from './pocket-monsters';
@@ -18,6 +20,8 @@ import { tetrablockDxCartridge } from './tetrablock-dx';
 export const CARTRIDGE_REGISTRY: GameCartridge[] = [
   pokemonRedCartridge,
   pokemonBlueCartridge,
+  froggerCartridge,
+  kirbyTiltCartridge,
   pocketBrawlCartridge,
   linksQuestCartridge,
   superPixelLandCartridge,

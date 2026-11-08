@@ -39,6 +39,7 @@ const MBC_NAMES: Record<number, string> = {
   0x19: 'MBC5',
   0x1a: 'MBC5+RAM',
   0x1b: 'MBC5+RAM+BATT',
+  0x22: 'MBC7+TILT+SRAM+BATT',
 };
 
 const GB_KEY_MAP: ReadonlyArray<{ btn: GBCButton; code: number }> = [
@@ -334,30 +335,34 @@ export class GBHardwareEmulator {
       core.stopEmulator &= 1;
       core.iterations = 0;
 
-      const seedPal = dmgPaletteHex ?? [0xefffde, 0xadd794, 0x529273, 0x183442];
-      core.colors = seedPal.slice();
-      if (core.cachedBGPaletteConversion) {
-        for (let i = 0; i < 4; i++) core.cachedBGPaletteConversion[i] = seedPal[i];
-      }
-      if (core.cachedOBJPaletteConversion) {
-        for (let i = 0; i < 8; i++) core.cachedOBJPaletteConversion[i] = seedPal[i % 4];
-      }
-      if (core.gbBGPalette) {
-        for (let i = 0; i < 4; i++) core.gbBGPalette[i] = seedPal[i];
-      }
-      if (core.gbcBGPalette) {
-        for (let i = 0; i < 64; i++) core.gbcBGPalette[i] = seedPal[i % 4];
+      if (!core.cGBC) {
+        const seedPal = dmgPaletteHex ?? [0xefffde, 0xadd794, 0x529273, 0x183442];
+        core.colors = seedPal.slice();
+        if (core.cachedBGPaletteConversion) {
+          for (let i = 0; i < 4; i++) core.cachedBGPaletteConversion[i] = seedPal[i];
+        }
+        if (core.cachedOBJPaletteConversion) {
+          for (let i = 0; i < 8; i++) core.cachedOBJPaletteConversion[i] = seedPal[i % 4];
+        }
+        if (core.gbBGPalette) {
+          for (let i = 0; i < 4; i++) core.gbBGPalette[i] = seedPal[i];
+        }
+        if (core.gbcBGPalette) {
+          for (let i = 0; i < 64; i++) core.gbcBGPalette[i] = seedPal[i % 4];
+        }
       }
 
       for (let i = 0; i < 12; i++) {
         core.run();
       }
-      if (typeof core.updateGBBGPalette === 'function') {
-        core.updateGBBGPalette(core.memory[0xff47]);
-      }
-      if (typeof core.updateGBOBJPalette === 'function') {
-        core.updateGBOBJPalette(0, core.memory[0xff48]);
-        core.updateGBOBJPalette(1, core.memory[0xff49]);
+      if (!core.cGBC) {
+        if (typeof core.updateGBBGPalette === 'function') {
+          core.updateGBBGPalette(core.memory[0xff47]);
+        }
+        if (typeof core.updateGBOBJPalette === 'function') {
+          core.updateGBOBJPalette(0, core.memory[0xff48]);
+          core.updateGBOBJPalette(1, core.memory[0xff49]);
+        }
       }
 
       this.gb = core;
@@ -445,6 +450,104 @@ export class GBHardwareEmulator {
       // Press A on NEW GAME to enter Professor Oak's intro speech
       tapKey(4, 14, 240);
     }
+  }
+
+  /**
+   * Fast-forwards the bundled Frogger (USA) GBC ROM (`frogger.gbc`) to:
+   * - `'TITLE'`: The iconic Majesco / Hasbro Interactive FROGGER Title Screen (frame 950)
+   * - `'MAIN_MENU'`: Past Language Select onto `Start / Options / Password`
+   * - `'PLAY_GAME'`: Directly into live Highway & River gameplay!
+   */
+  fastForwardFroggerBoot(target: 'TITLE' | 'MAIN_MENU' | 'PLAY_GAME' = 'PLAY_GAME'): void {
+    if (!this.gb) return;
+    const tapKey = (code: number, hold = 15, wait = 180) => {
+      this.gb.JoyPadEvent(code, true);
+      for (let i = 0; i < hold; i++) this.gb.run();
+      this.gb.JoyPadEvent(code, false);
+      for (let i = 0; i < wait; i++) this.gb.run();
+    };
+
+    if (target === 'TITLE') {
+      for (let i = 0; i < 885; i++) this.gb.run();
+      return;
+    }
+
+    // Advance past Language Select onto Player Select ("SELECT ONE PLAYER / TWO PLAYERS")
+    for (let i = 0; i < 1360; i++) this.gb.run();
+    tapKey(7, 15, 220);
+    tapKey(7, 15, 220);
+    tapKey(7, 15, 260);
+
+    if (target === 'MAIN_MENU') {
+      return;
+    }
+
+    // Press START on ONE PLAYER -> Live Highway & River Level 1
+    tapKey(7, 15, 320);
+  }
+
+  /**
+   * Fast-forwards the bundled Kirby Tilt 'n' Tumble (USA) GBC ROM (`kirby-tilt-n-tumble.gbc`) to:
+   * - `'TITLE'`: The official full-color Kirby Tilt 'n' Tumble Title Screen
+   * - `'FILE_SELECT'`: The native 3-slot Save File Select screen (`File 1`, `File 2`, `File 3`)
+   * - `'LEVEL_SELECT'`: Selected save slot's World / Stage Map (`Level 1 - Stage 1`)
+   * - `'PLAY_GAME'`: Directly into live rolling Kirby Stage 1-1 gameplay for that save slot!
+   */
+  fastForwardKirbyBoot(
+    slot = 0,
+    target: 'TITLE' | 'FILE_SELECT' | 'LEVEL_SELECT' | 'PLAY_GAME' = 'PLAY_GAME'
+  ): void {
+    if (!this.gb) return;
+    const tapKey = (code: number, hold = 14, wait = 150) => {
+      this.gb.JoyPadEvent(code, true);
+      for (let i = 0; i < hold; i++) this.gb.run();
+      this.gb.JoyPadEvent(code, false);
+      for (let i = 0; i < wait; i++) this.gb.run();
+    };
+
+    // 1. Dismiss initial patch splash at frame 60 -> opening cloud intro
+    for (let i = 0; i < 60; i++) this.gb.run();
+    tapKey(4, 12, 820);
+
+    // 2. Skip opening cloud intro -> official Kirby Tilt 'n' Tumble Title Screen
+    tapKey(7, 15, 380);
+
+    if (target === 'TITLE') {
+      for (let i = 0; i < 1420; i++) this.gb.run();
+      return;
+    }
+
+    // 3. Press START on the Title Screen -> 3-slot SELECT FILE screen (1 / 2 / 3 / ERASE)
+    tapKey(7, 15, 380);
+
+    // Move cursor down to the chosen profile slot (0 = File 1, 1 = File 2, 2 = File 3)
+    const clampedSlot = Math.max(0, Math.min(2, slot));
+    for (let s = 0; s < clampedSlot; s++) {
+      tapKey(3, 12, 60);
+    }
+
+    if (target === 'FILE_SELECT') {
+      return;
+    }
+
+    // 4. Press A on the chosen Save File -> Level 1 World / Stage Map
+    tapKey(4, 15, 420);
+
+    if (target === 'LEVEL_SELECT') {
+      return;
+    }
+
+    // 5. Select Stage 1-1 and confirm calibration prompt -> Live Rolling Kirby Stage 1-1!
+    tapKey(4, 15, 550);
+    tapKey(4, 15, 550);
+  }
+
+  /**
+   * Feeds normalized tilt coordinates (`x, y` in `[-1, 1]`) into MBC7 accelerometer registers.
+   */
+  setTilt(x: number, y: number): void {
+    if (!this.gb || typeof this.gb.GyroEvent !== 'function') return;
+    this.gb.GyroEvent(x, y);
   }
 
   isRunningHardware(): boolean {
