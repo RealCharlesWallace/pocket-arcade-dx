@@ -40,10 +40,15 @@ function bootstrap(): void {
   const shellSwatch = document.getElementById('shell-swatch')!;
   const shellLabel = document.getElementById('shell-label')!;
   const btnZoom = document.getElementById('btn-zoom')!;
+  const btnFullscreen = document.getElementById('btn-fullscreen');
   const btnMute = document.getElementById('btn-mute')!;
   const iconSoundOn = document.getElementById('icon-sound-on')!;
   const iconSoundOff = document.getElementById('icon-sound-off')!;
   const muteLabel = document.getElementById('mute-label')!;
+
+  const tiltHud = document.getElementById('tilt-hud');
+  const tiltBubbleDot = document.getElementById('tilt-bubble-dot');
+  const tiltAngleReadout = document.getElementById('tilt-angle-readout');
 
   const cartDialog = document.getElementById('cartridge-dialog') as HTMLDialogElement;
   const dialogCartGrid = document.getElementById('dialog-cart-grid')!;
@@ -77,6 +82,64 @@ function bootstrap(): void {
   const firebaseConfigForm = document.getElementById('firebase-config-form') as HTMLFormElement;
   const firebaseConfigInput = document.getElementById('firebase-config-input') as HTMLTextAreaElement;
   const leaderboardTableBody = document.getElementById('leaderboard-table-body')!;
+
+  // Prevent text/element selection, dragging, and context menus outside dialog inputs
+  const isDialogInput = (target: EventTarget | null): boolean => {
+    if (!(target instanceof Element)) return false;
+    return Boolean(target.closest('.cart-dialog input, .cart-dialog textarea'));
+  };
+  document.addEventListener('selectstart', (e) => {
+    if (!isDialogInput(e.target)) e.preventDefault();
+  });
+  document.addEventListener('dragstart', (e) => {
+    if (!isDialogInput(e.target)) e.preventDefault();
+  });
+  document.addEventListener('contextmenu', (e) => {
+    if (!isDialogInput(e.target)) e.preventDefault();
+  });
+
+  // Fullscreen & Mobile Play Mode (collapses mobile browser URL bar and requests tilt permission)
+  const syncFullscreenUI = () => {
+    const isFs = Boolean(
+      document.fullscreenElement ||
+        (document as unknown as { webkitFullscreenElement?: Element }).webkitFullscreenElement
+    );
+    btnFullscreen?.setAttribute('aria-pressed', String(isFs));
+  };
+  document.addEventListener('fullscreenchange', syncFullscreenUI);
+  document.addEventListener('webkitfullscreenchange', syncFullscreenUI);
+
+  const requestFullscreenSafe = () => {
+    const docEl = document.documentElement as HTMLElement & {
+      webkitRequestFullscreen?: () => Promise<void> | void;
+    };
+    if (
+      !document.fullscreenElement &&
+      !(document as unknown as { webkitFullscreenElement?: Element }).webkitFullscreenElement
+    ) {
+      try {
+        if (typeof docEl.requestFullscreen === 'function') {
+          docEl.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+        } else if (typeof docEl.webkitRequestFullscreen === 'function') {
+          docEl.webkitRequestFullscreen();
+        }
+      } catch {
+        // Ignore if blocked outside user gesture
+      }
+    }
+  };
+
+  const enterMobilePlayMode = () => {
+    input.requestTiltPermission().catch(() => {});
+    const isTouchOrMobile =
+      window.matchMedia?.('(pointer: coarse)').matches ||
+      window.innerWidth <= 900 ||
+      'ontouchstart' in window;
+    if (isTouchOrMobile) {
+      requestFullscreenSafe();
+      window.scrollTo(0, 1);
+    }
+  };
 
   // Mandatory light-dismiss fallback for browsers without native <dialog closedby="any">
   if (!('closedBy' in HTMLDialogElement.prototype)) {
@@ -123,6 +186,7 @@ function bootstrap(): void {
   );
 
   const powerOnConsole = () => {
+    enterMobilePlayMode();
     if (!systemOS.isPoweredOn()) {
       systemOS.powerOn();
       stageScene.getModel().setPowerState(true);
@@ -155,6 +219,30 @@ function bootstrap(): void {
     stageContainer.focus();
   });
 
+  // Upper-Right Phone Tilt & Angle Monitor Toggle Button (TILT ON / OFF)
+  const syncTiltToggleUI = () => {
+    const enabled = input.isTiltEnabled();
+    tiltHud?.setAttribute('aria-pressed', String(enabled));
+    tiltHud?.classList.toggle('is-active', enabled);
+    if (!enabled) {
+      if (tiltAngleReadout) tiltAngleReadout.textContent = 'TILT OFF';
+      if (tiltBubbleDot) tiltBubbleDot.style.transform = 'translate(0px, 0px)';
+    }
+  };
+  syncTiltToggleUI();
+
+  tiltHud?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const enabled = input.toggleTiltEnabled();
+    syncTiltToggleUI();
+    audio.playButtonClick();
+    liveStatus.textContent = enabled
+      ? 'Phone tilt sensor turned ON and calibrated to 0°, 0°.'
+      : 'Phone tilt sensor turned OFF.';
+    stageContainer.focus();
+  });
+
   // Visitor Counter initialization (sadok.mx style)
   cloud.recordAndGetVisitorCount().then((count) => {
     visitorCountEl.textContent = `#${count.toLocaleString('en-US')}`;
@@ -168,9 +256,11 @@ function bootstrap(): void {
   });
 
   // Shell Theme initialization & cycling
+  const urlShell = new URLSearchParams(window.location.search).get('shell');
+  const initialShellId = urlShell || storage.getSetting('shell', 'atomic-purple');
   let themeIdx = Math.max(
     0,
-    SHELL_THEMES.findIndex((t) => t.id === storage.getSetting('shell', 'atomic-purple'))
+    SHELL_THEMES.findIndex((t) => t.id === initialShellId)
   );
   const applyShellTheme = (idx: number) => {
     const theme = SHELL_THEMES[idx % SHELL_THEMES.length];
@@ -210,6 +300,26 @@ function bootstrap(): void {
     const nextZoom = !stageScene.isZoomedIn();
     stageScene.setZoomedIn(nextZoom);
     btnZoom.setAttribute('aria-pressed', String(nextZoom));
+    audio.playButtonClick();
+    stageContainer.focus();
+  });
+
+  // Fullscreen Toggle
+  btnFullscreen?.addEventListener('click', () => {
+    const doc = document as Document & {
+      webkitFullscreenElement?: Element;
+      webkitExitFullscreen?: () => Promise<void> | void;
+    };
+    if (document.fullscreenElement || doc.webkitFullscreenElement) {
+      if (typeof document.exitFullscreen === 'function') {
+        document.exitFullscreen().catch(() => {});
+      } else if (typeof doc.webkitExitFullscreen === 'function') {
+        doc.webkitExitFullscreen();
+      }
+    } else {
+      requestFullscreenSafe();
+    }
+    window.scrollTo(0, 1);
     audio.playButtonClick();
     stageContainer.focus();
   });
@@ -561,6 +671,25 @@ function bootstrap(): void {
     const elapsed = now / 1000;
 
     const inputState = input.poll();
+    const tiltOn = input.isTiltEnabled();
+    stageScene.setDeviceTilt(tiltOn ? inputState.tilt.x : 0, tiltOn ? inputState.tilt.y : 0);
+
+    if (tiltBubbleDot) {
+      const dotX = tiltOn ? Math.max(-5, Math.min(5, inputState.tilt.x * 5)) : 0;
+      const dotY = tiltOn ? Math.max(-5, Math.min(5, inputState.tilt.y * 5)) : 0;
+      tiltBubbleDot.style.transform = `translate(${dotX.toFixed(1)}px, ${dotY.toFixed(1)}px)`;
+    }
+    if (tiltAngleReadout) {
+      if (tiltOn) {
+        const r = Math.round(inputState.tilt.rollDeg);
+        const p = Math.round(inputState.tilt.pitchDeg);
+        tiltAngleReadout.textContent = `TILT ON · ${r}°,${p}°`;
+      } else {
+        tiltAngleReadout.textContent = 'TILT OFF';
+      }
+    }
+    tiltHud?.classList.toggle('is-active', tiltOn);
+
     systemOS.update(dt, inputState);
     systemOS.renderToScreenCanvas(screenCtx);
     stageScene.render(dt, elapsed);

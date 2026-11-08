@@ -1,6 +1,7 @@
 // @ts-expect-error -- serverboy's internal GameBoyCore is a CommonJS module without TS declarations
 import GameBoyCore from 'serverboy/src/gameboy_core/gameboy.js';
 import { GBC_HEIGHT, GBC_WIDTH } from './pixel-renderer';
+import type { ChiptuneSynth } from './audio';
 import type { GBCButton, InputState } from './types';
 
 export interface RomMetadata {
@@ -279,6 +280,7 @@ export class GBHardwareEmulator {
   private metadata: RomMetadata | null = null;
   private romBytes: Uint8Array | null = null;
   private cycleAccum = 0;
+  private audio: ChiptuneSynth | null = null;
   private prevHeld: Record<GBCButton, boolean> = {
     up: false,
     down: false,
@@ -301,6 +303,10 @@ export class GBHardwareEmulator {
     this.frameCtx = this.frameCanvas.getContext('2d')!;
     this.frameCtx.imageSmoothingEnabled = false;
     this.imageData = this.frameCtx.createImageData(GBC_WIDTH, GBC_HEIGHT);
+  }
+
+  setAudio(audio: ChiptuneSynth): void {
+    this.audio = audio;
   }
 
   loadRom(
@@ -565,6 +571,21 @@ export class GBHardwareEmulator {
   step(dt: number, input: InputState): void {
     if (!this.gb) return;
 
+    if (this.audio) {
+      if (input.justPressed.a || input.justPressed.start) {
+        this.audio.playMenuSelect();
+      } else if (input.justPressed.b) {
+        this.audio.playMenuBack();
+      } else if (
+        input.justPressed.up ||
+        input.justPressed.down ||
+        input.justPressed.left ||
+        input.justPressed.right
+      ) {
+        this.audio.playMenuMove();
+      }
+    }
+
     for (const { btn, code } of GB_KEY_MAP) {
       const isDown = Boolean(input.held[btn]);
       if (isDown !== this.prevHeld[btn]) {
@@ -580,6 +601,10 @@ export class GBHardwareEmulator {
       this.gb.run();
       this.cycleAccum -= 0.008;
       slices++;
+    }
+
+    if (this.audio && this.gb.memory) {
+      this.audio.syncHardwareAPU(this.gb.memory);
     }
   }
 

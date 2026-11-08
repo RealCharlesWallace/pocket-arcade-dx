@@ -652,7 +652,7 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
           : bootTarget;
       hwEmulator.fastForwardGen1Boot(target);
       state.mode = 'EMU_ROM';
-      state.ctx?.audio.stopBGM();
+      state.ctx?.audio.startBGM('monster_town');
       return true;
     }
     return false;
@@ -1643,6 +1643,7 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
 
     init(context: GameContext) {
       state.ctx = context;
+      (hwEmulator as unknown as { setAudio?: (a: unknown) => void }).setAudio?.(context.audio);
       const saved = context.storage.loadData<SaveProgress | null>(cartId, null);
       if (saved && saved.party?.length > 0) {
         state.party = saved.party;
@@ -1706,7 +1707,7 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
         const demoRom = buildHardwareTestRom(isRed ? 'POKEMON RED' : 'POKEMON BLUE');
         hwEmulator.loadRom(`${cartId}-test.gb`, demoRom, null, sgbPalette);
         state.mode = 'EMU_ROM';
-        context.audio.stopBGM();
+        context.audio.startBGM('monster_town');
       }
     },
 
@@ -1721,7 +1722,7 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
       if (meta.isExecutable && hwEmulator.isRunningHardware()) {
         hwEmulator.fastForwardGen1Boot('TITLE');
         state.mode = 'EMU_ROM';
-        state.ctx?.audio.stopBGM();
+        state.ctx?.audio.startBGM('monster_town');
       } else {
         state.mode = 'PROFILES';
       }

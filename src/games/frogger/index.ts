@@ -224,7 +224,7 @@ export function createFroggerCartridge(): GameCartridge {
       const target = bootTarget === 'PLAY_GAME' && !prof.hasSave ? 'MAIN_MENU' : bootTarget;
       hwEmulator.fastForwardFroggerBoot(target);
       state.mode = 'EMU_ROM';
-      state.ctx?.audio.stopBGM();
+      state.ctx?.audio.startBGM('frogger' as any);
       return true;
     }
     return false;
@@ -241,7 +241,7 @@ export function createFroggerCartridge(): GameCartridge {
     initArcadeLanes(state.stage);
     resetFrogPosition();
     state.mode = 'ARCADE';
-    state.ctx?.audio.startBGM('racer');
+    state.ctx?.audio.startBGM('frogger' as any);
   }
 
   function updateProfiles(input: InputState): void {
@@ -573,13 +573,14 @@ export function createFroggerCartridge(): GameCartridge {
 
     init(context: GameContext) {
       state.ctx = context;
+      (hwEmulator as unknown as { setAudio?: (a: unknown) => void }).setAudio?.(context.audio);
       state.profileCursor = 0;
       state.mode = 'PROFILES';
       loadProfiles();
       initArcadeLanes(1);
       resetFrogPosition();
       state.romReady = Boolean(BUNDLED_FROGGER_ROM);
-      context.audio.startBGM('racer');
+      context.audio.startBGM('frogger' as any);
 
       const params = new URLSearchParams(window.location.search);
       const urlMode = params.get('mode')?.toLowerCase();

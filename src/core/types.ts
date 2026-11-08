@@ -3,10 +3,32 @@ import type { CartridgeStorage } from './storage';
 
 export type GBCButton = 'up' | 'down' | 'left' | 'right' | 'a' | 'b' | 'start' | 'select';
 
+export interface TiltState {
+  /** Normalized horizontal roll in [-1, 1] (left = -1, right = +1) */
+  x: number;
+  /** Normalized vertical pitch in [-1, 1] (up/forward = -1, down/back = +1) */
+  y: number;
+  /** Roll angle in degrees [-90, 90] */
+  rollDeg: number;
+  /** Pitch angle in degrees [-90, 90] */
+  pitchDeg: number;
+  /** Polar tilt angle in degrees [0, 360) */
+  angleDeg: number;
+  /** Tilt magnitude in [0, 1] */
+  magnitude: number;
+  /** True when a sharp upward phone flick is detected (MBC7 Kirby pop/jump) */
+  flickJump: boolean;
+  /** Active tilt input source */
+  source: 'sensor' | 'drag' | 'dpad' | 'idle';
+  /** Whether hardware orientation/motion events have been received */
+  sensorActive: boolean;
+}
+
 export interface InputState {
   held: Record<GBCButton, boolean>;
   justPressed: Record<GBCButton, boolean>;
   justReleased: Record<GBCButton, boolean>;
+  tilt: TiltState;
 }
 
 export interface GameContext {

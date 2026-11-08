@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import type { GBCButton, ShellTheme } from '../core/types';
 
 export const SHELL_THEMES: ShellTheme[] = [
-  { id: 'atomic-purple', name: 'ATOMIC PURPLE', color: 0x6c3cb8, cssHex: '#6c3cb8', roughness: 0.28 },
+  { id: 'atomic-purple', name: 'ATOMIC PURPLE', color: 0x6c3cb8, cssHex: '#6c3cb8', roughness: 0.28, transmission: 0.28, opacity: 0.91 },
+  { id: 'transparent-blue', name: 'TRANSPARENT BLUE', color: 0x1a78ee, cssHex: '#1a78ee', roughness: 0.16, transmission: 0.36, opacity: 0.88 },
   { id: 'teal', name: 'TEAL BLUE', color: 0x16a5b2, cssHex: '#16a5b2', roughness: 0.30 },
   { id: 'kiwi', name: 'KIWI GREEN', color: 0x76c728, cssHex: '#76c728', roughness: 0.32 },
   { id: 'berry', name: 'BERRY PINK', color: 0xc92266, cssHex: '#c92266', roughness: 0.32 },
@@ -142,6 +143,7 @@ export class GameBoyColor3D {
     this.buildControls();
     this.buildSpeakerGrille();
     this.buildCartridgeAndPowerSwitch();
+    this.setShellTheme(SHELL_THEMES[0]);
   }
 
   private createPlasticBumpTexture(): THREE.CanvasTexture {
@@ -175,6 +177,115 @@ export class GameBoyColor3D {
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(3, 5);
+    return tex;
+  }
+
+  private createPcbTexture(): THREE.CanvasTexture {
+    const c = document.createElement('canvas');
+    c.width = 256;
+    c.height = 448;
+    const ctx = c.getContext('2d')!;
+
+    // Dark emerald/teal solder mask base
+    const bgGrad = ctx.createLinearGradient(0, 0, 256, 448);
+    bgGrad.addColorStop(0, '#0a3a30');
+    bgGrad.addColorStop(0.5, '#0e4c3e');
+    bgGrad.addColorStop(1, '#083028');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, 256, 448);
+
+    // Subtle ground plane copper pour blocks
+    ctx.fillStyle = 'rgba(24, 118, 94, 0.36)';
+    ctx.fillRect(14, 18, 228, 170);
+    ctx.fillRect(14, 210, 228, 220);
+
+    // Gold copper bus traces & angled routing lines
+    ctx.strokeStyle = '#d4af37';
+    ctx.lineWidth = 1.6;
+    for (let i = 0; i < 22; i++) {
+      const x0 = 22 + ((i * 19) % 210);
+      const y0 = 28 + ((i * 37) % 380);
+      const dx = ((i % 3) - 1) * 28;
+      const dy = 24 + (i % 4) * 18;
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x0 + dx, y0 + Math.abs(dx));
+      ctx.lineTo(x0 + dx, y0 + Math.abs(dx) + dy);
+      ctx.stroke();
+
+      // Gold via pad at trace endpoints
+      ctx.fillStyle = '#e5c158';
+      ctx.beginPath();
+      ctx.arc(x0, y0, 2.4, 0, Math.PI * 2);
+      ctx.arc(x0 + dx, y0 + Math.abs(dx) + dy, 2.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Black QFP IC chips (CPU CGB & WRAM) with gold gull-wing pins
+    const drawChip = (cx: number, cy: number, w: number, h: number, label: string) => {
+      ctx.fillStyle = '#d8b448';
+      for (let px = cx - w / 2 + 4; px <= cx + w / 2 - 4; px += 5) {
+        ctx.fillRect(px - 1, cy - h / 2 - 4, 2, 4);
+        ctx.fillRect(px - 1, cy + h / 2, 2, 4);
+      }
+      for (let py = cy - h / 2 + 4; py <= cy + h / 2 - 4; py += 5) {
+        ctx.fillRect(cx - w / 2 - 4, py - 1, 4, 2);
+        ctx.fillRect(cx + w / 2, py - 1, 4, 2);
+      }
+      ctx.fillStyle = '#14171c';
+      ctx.fillRect(cx - w / 2, cy - h / 2, w, h);
+      ctx.strokeStyle = '#2d333d';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(cx - w / 2, cy - h / 2, w, h);
+      ctx.fillStyle = 'rgba(235, 240, 248, 0.55)';
+      ctx.font = 'bold 8px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, cx, cy);
+    };
+
+    drawChip(92, 224, 54, 54, 'CPU CGB');
+    drawChip(174, 232, 38, 48, 'LH52256');
+    drawChip(132, 148, 44, 30, 'AMP-GB');
+
+    // Gold circular interdigitated button contact pads (D-Pad, A/B, Select/Start)
+    const drawContactPad = (cx: number, cy: number, r: number) => {
+      ctx.fillStyle = '#dfba48';
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#0b3d32';
+      ctx.lineWidth = 1.6;
+      for (let y = cy - r + 3; y <= cy + r - 3; y += 4) {
+        ctx.beginPath();
+        ctx.moveTo(cx - r + 2, y);
+        ctx.lineTo(cx + r - 2, y);
+        ctx.stroke();
+      }
+    };
+
+    // D-Pad 4 directional contact pads
+    drawContactPad(54, 286, 12);
+    drawContactPad(54, 336, 12);
+    drawContactPad(29, 311, 12);
+    drawContactPad(79, 311, 12);
+
+    // A & B contact pads
+    drawContactPad(214, 297, 15);
+    drawContactPad(163, 323, 15);
+
+    // Select & Start pill contact pads
+    drawContactPad(104, 400, 10);
+    drawContactPad(152, 400, 10);
+
+    // White PCB silkscreen markings
+    ctx.fillStyle = 'rgba(240, 248, 245, 0.55)';
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('DMG-CGB-04', 20, 428);
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
     return tex;
   }
 
@@ -225,6 +336,17 @@ export class GameBoyColor3D {
     bodyMesh.receiveShadow = true;
     this.bodyMesh = bodyMesh;
     this.root.add(bodyMesh);
+
+    // Internal Game Boy Color PCB circuit board visible through translucent polycarbonate shells
+    const pcbGeo = new THREE.PlaneGeometry(2.76, 4.86);
+    const pcbMat = new THREE.MeshStandardMaterial({
+      map: this.createPcbTexture(),
+      roughness: 0.38,
+      metalness: 0.28,
+    });
+    const pcbMesh = new THREE.Mesh(pcbGeo, pcbMat);
+    pcbMesh.position.set(0, 0, 0.08);
+    this.root.add(pcbMesh);
 
     // Side seam groove ring separating front and rear shell halves (gives strong 3D depth)
     const seamShape = this.createRoundedRectShape(3.40, 5.48, 0.24, 0.62, 0.38, 0.16);
@@ -785,36 +907,51 @@ export class GameBoyColor3D {
     buildActionButton('b', 'B', 0.38, -1.08, this.btnBGroup);
 
     // --- ERGONOMICALLY LOWERED SELECT & START RUBBER PILLS (y = -1.92) ---
-    // Recessed stadium wells under SELECT & START
-    const pillWellGeo = new THREE.PlaneGeometry(0.40, 0.16);
-    const selectWell = new THREE.Mesh(pillWellGeo, wellMat);
-    selectWell.position.set(-0.26, -1.92, 0.433);
-    const startWell = new THREE.Mesh(pillWellGeo, wellMat);
-    startWell.position.set(0.26, -1.92, 0.433);
-    this.root.add(selectWell, startWell);
+    // Tight, rounded stadium/capsule molded shell bezels & razor-tight capsule seams (zero black rectangles)
+    const pillBezelGeo = new THREE.CapsuleGeometry(0.066, 0.224, 12, 20);
+    pillBezelGeo.rotateZ(Math.PI / 2);
+    pillBezelGeo.scale(1, 1, 0.22);
+    const selectBezel = new THREE.Mesh(pillBezelGeo, this.shellMat);
+    selectBezel.position.set(-0.26, -1.92, 0.432);
+    const startBezel = new THREE.Mesh(pillBezelGeo, this.shellMat);
+    startBezel.position.set(0.26, -1.92, 0.432);
+    this.root.add(selectBezel, startBezel);
 
-    const pillGeo = new THREE.CapsuleGeometry(0.06, 0.23, 10, 18);
+    const pillSeamGeo = new THREE.CapsuleGeometry(0.056, 0.216, 12, 20);
+    pillSeamGeo.rotateZ(Math.PI / 2);
+    pillSeamGeo.scale(1, 1, 0.12);
+    const pillSeamMat = new THREE.MeshStandardMaterial({
+      color: 0x1e222a,
+      roughness: 0.78,
+    });
+    const selectSeam = new THREE.Mesh(pillSeamGeo, pillSeamMat);
+    selectSeam.position.set(-0.26, -1.92, 0.435);
+    const startSeam = new THREE.Mesh(pillSeamGeo, pillSeamMat);
+    startSeam.position.set(0.26, -1.92, 0.435);
+    this.root.add(selectSeam, startSeam);
+
+    const pillGeo = new THREE.CapsuleGeometry(0.053, 0.212, 14, 24);
     pillGeo.rotateZ(Math.PI / 2);
     this.matSelect = new THREE.MeshStandardMaterial({
-      color: 0x2c3036,
-      roughness: 0.55,
-      metalness: 0.08,
+      color: 0x767e8a,
+      roughness: 0.42,
+      metalness: 0.06,
     });
     this.matStart = new THREE.MeshStandardMaterial({
-      color: 0x2c3036,
-      roughness: 0.55,
-      metalness: 0.08,
+      color: 0x767e8a,
+      roughness: 0.42,
+      metalness: 0.06,
     });
 
     this.btnSelectMesh = new THREE.Mesh(pillGeo, this.matSelect);
-    this.btnSelectMesh.position.set(-0.26, -1.92, 0.445);
+    this.btnSelectMesh.position.set(-0.26, -1.92, 0.446);
     this.btnSelectMesh.userData = { control: 'select' };
     this.interactiveMeshes.push(this.btnSelectMesh);
     this.buttonMeshes.select = this.btnSelectMesh;
     this.root.add(this.btnSelectMesh);
 
     this.btnStartMesh = new THREE.Mesh(pillGeo, this.matStart);
-    this.btnStartMesh.position.set(0.26, -1.92, 0.445);
+    this.btnStartMesh.position.set(0.26, -1.92, 0.446);
     this.btnStartMesh.userData = { control: 'start' };
     this.interactiveMeshes.push(this.btnStartMesh);
     this.buttonMeshes.start = this.btnStartMesh;
@@ -909,6 +1046,12 @@ export class GameBoyColor3D {
   setShellTheme(theme: ShellTheme): void {
     this.shellMat.color.setHex(theme.color);
     this.shellMat.roughness = theme.roughness;
+    this.shellMat.transparent = Boolean(theme.transmission && theme.transmission > 0);
+    this.shellMat.opacity = theme.opacity ?? 1.0;
+    this.shellMat.transmission = theme.transmission ?? 0;
+    this.shellMat.thickness = theme.transmission ? 0.5 : 0;
+    this.shellMat.clearcoat = theme.transmission ? 0.85 : 0.48;
+    this.shellMat.needsUpdate = true;
   }
 
   setMobileFullBleed(enabled: boolean, minHeightWorld = 5.4): void {
@@ -1049,20 +1192,20 @@ export class GameBoyColor3D {
     this.matB.color.setRGB(shadeB, shadeB, shadeB);
     this.matBBody.color.setRGB(0.125 * shadeB, 0.14 * shadeB, 0.172 * shadeB);
 
-    // Select / Start rubber pill tactile squish into recessed stadium wells
+    // Select / Start rubber pill tactile squish into rounded capsule seams
     const pSel = this.buttonCurrent.select;
     const hSel = this.hoverCurrent.select;
-    this.btnSelectMesh.position.z = 0.445 + hSel * 0.014 - pSel * 0.052;
+    this.btnSelectMesh.position.z = 0.446 + hSel * 0.014 - pSel * 0.052;
     this.btnSelectMesh.scale.set(1, 1, 1 - pSel * 0.30);
     const shadeSel = 1 - pSel * 0.35 + hSel * 0.10;
-    this.matSelect.color.setRGB(0.172 * shadeSel, 0.188 * shadeSel, 0.212 * shadeSel);
+    this.matSelect.color.setRGB(0.46 * shadeSel, 0.49 * shadeSel, 0.54 * shadeSel);
 
     const pStart = this.buttonCurrent.start;
     const hStart = this.hoverCurrent.start;
-    this.btnStartMesh.position.z = 0.445 + hStart * 0.014 - pStart * 0.052;
+    this.btnStartMesh.position.z = 0.446 + hStart * 0.014 - pStart * 0.052;
     this.btnStartMesh.scale.set(1, 1, 1 - pStart * 0.30);
     const shadeStart = 1 - pStart * 0.35 + hStart * 0.10;
-    this.matStart.color.setRGB(0.172 * shadeStart, 0.188 * shadeStart, 0.212 * shadeStart);
+    this.matStart.color.setRGB(0.46 * shadeStart, 0.49 * shadeStart, 0.54 * shadeStart);
 
     // Power switch position
     const targetSwitchY = this.isPowered ? 1.62 : 1.48;

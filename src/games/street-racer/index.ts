@@ -88,10 +88,13 @@ export const streetRacerCartridge: GameCartridge = {
     const curve = Math.sin(state.distance * 0.008) * 0.65 + Math.cos(state.distance * 0.0035) * 0.45;
     state.playerX -= curve * (state.speed / 220) * 0.9 * dt;
 
-    // Steering
+    // Steering (Left/Right buttons + Phone/Drag Tilt steering)
     const steerSpeed = 1.65;
     if (input.held.left) state.playerX -= steerSpeed * dt;
     if (input.held.right) state.playerX += steerSpeed * dt;
+    if (input.tilt.source !== 'dpad' && Math.abs(input.tilt.x) > 0.15) {
+      state.playerX += input.tilt.x * steerSpeed * dt;
+    }
 
     // Off-road grass slowdown
     if (Math.abs(state.playerX) > 0.95) {

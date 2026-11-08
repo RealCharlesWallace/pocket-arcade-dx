@@ -7,7 +7,9 @@ export type BGMTrack =
   | 'quest'
   | 'platformer'
   | 'tetris'
-  | 'racer';
+  | 'racer'
+  | 'frogger'
+  | 'kirby';
 
 interface NoteStep {
   lead: number; // Hz, 0 = rest
@@ -105,28 +107,113 @@ const TRACKS: Record<Exclude<BGMTrack, 'none'>, NoteStep[]> = {
     { lead: N.D5, bass: N.C3, noise: true, dur: 0.12 },
     { lead: N.A4, bass: N.A3, dur: 0.12 },
   ],
+  frogger: [
+    { lead: N.G5, bass: N.C3, noise: true, dur: 0.14 },
+    { lead: N.E5, bass: N.G3, dur: 0.14 },
+    { lead: N.C5, bass: N.C3, noise: true, dur: 0.14 },
+    { lead: N.E5, bass: N.G3, dur: 0.14 },
+    { lead: N.G5, bass: N.C3, noise: true, dur: 0.14 },
+    { lead: N.A5, bass: N.F3, dur: 0.14 },
+    { lead: N.G5, bass: N.C3, noise: true, dur: 0.14 },
+    { lead: N.E5, bass: N.G3, dur: 0.14 },
+    { lead: N.F5, bass: N.D3, noise: true, dur: 0.14 },
+    { lead: N.D5, bass: N.G3, dur: 0.14 },
+    { lead: N.B4, bass: N.G3, noise: true, dur: 0.14 },
+    { lead: N.C5, bass: N.C3, dur: 0.22 },
+  ],
+  kirby: [
+    { lead: N.C5, bass: N.F3, dur: 0.15 },
+    { lead: N.D5, bass: N.C3, noise: true, dur: 0.15 },
+    { lead: N.E5, bass: N.F3, dur: 0.15 },
+    { lead: N.F5, bass: N.C3, noise: true, dur: 0.15 },
+    { lead: N.A5, bass: N.F3, dur: 0.22 },
+    { lead: N.G5, bass: N.C3, noise: true, dur: 0.15 },
+    { lead: N.F5, bass: N.D3, dur: 0.15 },
+    { lead: N.E5, bass: N.A3, noise: true, dur: 0.15 },
+    { lead: N.D5, bass: N.Bb3, dur: 0.15 },
+    { lead: N.G5, bass: N.C3, noise: true, dur: 0.22 },
+  ],
 };
 
 export class ChiptuneSynth {
   private ctx: AudioContext | null = null;
+  private masterGain: GainNode | null = null;
+  private unlocked = false;
   private muted = false;
   private currentTrack: BGMTrack = 'none';
   private stepIdx = 0;
   private stepTimer: number | null = null;
+  private lastApuFreq1 = 0;
+  private lastApuTime1 = 0;
+  private lastApuFreq2 = 0;
+  private lastApuTime2 = 0;
 
   constructor(initialMuted = false) {
     this.muted = initialMuted;
+    if (typeof window !== 'undefined') {
+      const unlockHandler = () => {
+        this.unlock();
+      };
+      const events = ['touchstart', 'touchend', 'pointerdown', 'mousedown', 'click', 'keydown'] as const;
+      for (const evt of events) {
+        window.addEventListener(evt, unlockHandler, { capture: true, passive: true });
+      }
+    }
+  }
+
+  unlock(): void {
+    if (this.muted) return;
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+
+    if ((ctx.state as string) !== 'running') {
+      ctx.resume().catch(() => {});
+    }
+
+    if (!this.unlocked || (ctx.state as string) !== 'running') {
+      try {
+        const silentBuffer = ctx.createBuffer(1, 1, 22050);
+        const src = ctx.createBufferSource();
+        src.buffer = silentBuffer;
+        src.connect(ctx.destination);
+        src.start(0);
+        if ((ctx.state as string) === 'running') {
+          this.unlocked = true;
+        }
+      } catch {
+        // Ignore if context is not yet ready
+      }
+    }
+
+    if (this.currentTrack !== 'none' && this.stepTimer === null) {
+      this.scheduleNextNote();
+    }
   }
 
   private ensureContext(): AudioContext | null {
     if (this.muted) return null;
-    if (!this.ctx) {
+    if (!this.ctx && typeof window !== 'undefined') {
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (AudioCtx) {
         this.ctx = new AudioCtx();
+        const master = this.ctx.createGain();
+        master.gain.value = 2.2;
+        if (typeof this.ctx.createDynamicsCompressor === 'function') {
+          const comp = this.ctx.createDynamicsCompressor();
+          comp.threshold.value = -14;
+          comp.knee.value = 12;
+          comp.ratio.value = 4;
+          comp.attack.value = 0.003;
+          comp.release.value = 0.15;
+          master.connect(comp);
+          comp.connect(this.ctx.destination);
+        } else {
+          master.connect(this.ctx.destination);
+        }
+        this.masterGain = master;
       }
     }
-    if (this.ctx && this.ctx.state === 'suspended') {
+    if (this.ctx && (this.ctx.state as string) !== 'running') {
       this.ctx.resume().catch(() => {});
     }
     return this.ctx;
@@ -140,8 +227,8 @@ export class ChiptuneSynth {
     this.muted = muted;
     if (muted && this.ctx) {
       this.ctx.suspend().catch(() => {});
-    } else if (!muted && this.ctx) {
-      this.ctx.resume().catch(() => {});
+    } else if (!muted) {
+      this.unlock();
     }
   }
 
@@ -162,7 +249,7 @@ export class ChiptuneSynth {
     gain.gain.exponentialRampToValueAtTime(0.0008, now + duration);
 
     osc.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(this.masterGain ?? ctx.destination);
     osc.start(now);
     osc.stop(now + duration);
   }
@@ -187,8 +274,47 @@ export class ChiptuneSynth {
     gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
 
     src.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(this.masterGain ?? ctx.destination);
     src.start(now);
+  }
+
+  /**
+   * Synchronizes Game Boy LR35902 hardware APU sound registers (0xFF10..0xFF26)
+   * with Web Audio oscillator voices.
+   */
+  syncHardwareAPU(memory: ArrayLike<number>): void {
+    if (this.muted || !memory) return;
+    if (((memory[0xff26] ?? 0) & 0x80) === 0) return;
+
+    const now = performance.now();
+
+    // Channel 1 (Square 1)
+    const vol1 = ((memory[0xff12] ?? 0) >> 4) & 0x0f;
+    const rawFreq1 = (((memory[0xff14] ?? 0) & 0x07) << 8) | ((memory[0xff13] ?? 0) & 0xff);
+    if (vol1 > 0 && rawFreq1 > 64 && rawFreq1 < 2040) {
+      const freq1 = 131072 / (2048 - rawFreq1);
+      if (Math.abs(freq1 - this.lastApuFreq1) > 8 || now - this.lastApuTime1 > 95) {
+        this.playTone(freq1, 0.085, 'square', (vol1 / 15) * 0.065);
+        this.lastApuFreq1 = freq1;
+        this.lastApuTime1 = now;
+      }
+    } else {
+      this.lastApuFreq1 = 0;
+    }
+
+    // Channel 2 (Square 2)
+    const vol2 = ((memory[0xff17] ?? 0) >> 4) & 0x0f;
+    const rawFreq2 = (((memory[0xff19] ?? 0) & 0x07) << 8) | ((memory[0xff18] ?? 0) & 0xff);
+    if (vol2 > 0 && rawFreq2 > 64 && rawFreq2 < 2040) {
+      const freq2 = 131072 / (2048 - rawFreq2);
+      if (Math.abs(freq2 - this.lastApuFreq2) > 8 || now - this.lastApuTime2 > 95) {
+        this.playTone(freq2, 0.085, 'triangle', (vol2 / 15) * 0.06);
+        this.lastApuFreq2 = freq2;
+        this.lastApuTime2 = now;
+      }
+    } else {
+      this.lastApuFreq2 = 0;
+    }
   }
 
   /** Classic Game Boy "Ba-ding!" boot chime */

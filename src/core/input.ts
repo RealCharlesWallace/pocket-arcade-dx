@@ -1,4 +1,4 @@
-import type { GBCButton, InputState } from './types';
+import type { GBCButton, InputState, TiltState } from './types';
 
 const ALL_BUTTONS: GBCButton[] = ['up', 'down', 'left', 'right', 'a', 'b', 'start', 'select'];
 
@@ -29,6 +29,21 @@ export class InputManager {
   private prevCombined: Record<GBCButton, boolean> = this.emptyRecord();
   private onButtonChangeCallbacks: Array<(btn: GBCButton, pressed: boolean) => void> = [];
   private onAnyInputCallbacks: Array<() => void> = [];
+
+  // Phone Tilt & Angle Monitoring state (strictly decoupled from D-Pad / arrow keys)
+  private tiltEnabled = true;
+  private rawRollDeg = 0;
+  private rawPitchDeg = 30;
+  private baseRollDeg = 0;
+  private basePitchDeg = 30;
+  private sensorActive = false;
+  private orientationReceived = false;
+  private flickJumpLatched = false;
+  private lastFlickTimeMs = 0;
+  private manualTiltActive = false;
+  private manualTiltX = 0;
+  private manualTiltY = 0;
+  private permissionRequested = false;
 
   constructor() {
     window.addEventListener('keydown', (e) => {
@@ -70,6 +85,7 @@ export class InputManager {
     });
 
     this.bindTouchOverlayButtons();
+    this.bindTiltSensors();
   }
 
   private emptyRecord(): Record<GBCButton, boolean> {
@@ -90,6 +106,148 @@ export class InputManager {
     buttons.forEach((el) => {
       el.addEventListener('contextmenu', (e) => e.preventDefault());
     });
+  }
+
+  private bindTiltSensors(): void {
+    if (typeof window === 'undefined') return;
+
+    // Support ?tilt=18,-12 or ?tilt=off / ?tilt=on URL query param for simulator/browser testing
+    const params = new URLSearchParams(window.location.search);
+    const tiltParam = params.get('tilt')?.trim().toLowerCase();
+    if (tiltParam === 'off' || tiltParam === '0' || tiltParam === 'false') {
+      this.tiltEnabled = false;
+    } else if (tiltParam === 'on' || tiltParam === '1' || tiltParam === 'true') {
+      this.tiltEnabled = true;
+    } else if (tiltParam) {
+      const parts = tiltParam.split(',').map((s) => Number(s.trim()));
+      if (parts.length >= 2 && Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
+        this.tiltEnabled = true;
+        const isDegrees = Math.abs(parts[0]) > 1 || Math.abs(parts[1]) > 1;
+        const nx = isDegrees ? parts[0] / 28 : parts[0];
+        const ny = isDegrees ? parts[1] / 28 : parts[1];
+        this.setManualTilt(nx, ny, true);
+      }
+    }
+
+    window.addEventListener('deviceorientation', (e: DeviceOrientationEvent) => {
+      if (typeof e.gamma === 'number' && typeof e.beta === 'number' && (e.gamma !== 0 || e.beta !== 0)) {
+        const screenAngle = window.screen?.orientation?.angle ?? 0;
+        let roll = e.gamma;
+        let pitch = e.beta;
+        if (screenAngle === 90) {
+          roll = -e.beta;
+          pitch = e.gamma;
+        } else if (screenAngle === -90 || screenAngle === 270) {
+          roll = e.beta;
+          pitch = -e.gamma;
+        }
+        this.rawRollDeg = roll;
+        this.rawPitchDeg = pitch;
+        this.orientationReceived = true;
+        this.sensorActive = true;
+      }
+    });
+
+    window.addEventListener('devicemotion', (e: DeviceMotionEvent) => {
+      const acc = e.accelerationIncludingGravity;
+      if (!acc) return;
+      const ax = acc.x ?? 0;
+      const ay = acc.y ?? 0;
+      const az = acc.z ?? 0;
+      if (ax !== 0 || ay !== 0 || az !== 0) {
+        this.sensorActive = true;
+        if (!this.orientationReceived) {
+          const rollRad = Math.atan2(ax, Math.hypot(ay, az));
+          const pitchRad = Math.atan2(-ay, Math.hypot(ax, az));
+          this.rawRollDeg = (rollRad * 180) / Math.PI;
+          this.rawPitchDeg = (pitchRad * 180) / Math.PI;
+        }
+        const now = performance.now();
+        if (this.tiltEnabled && Math.abs(az) > 14.5 && now - this.lastFlickTimeMs > 280) {
+          this.flickJumpLatched = true;
+          this.lastFlickTimeMs = now;
+        }
+      }
+    });
+
+    const autoRequestOnce = () => {
+      if (!this.permissionRequested && this.tiltEnabled) {
+        this.requestTiltPermission().catch(() => {});
+      }
+    };
+    window.addEventListener('click', autoRequestOnce, { once: true, passive: true });
+    window.addEventListener('touchend', autoRequestOnce, { once: true, passive: true });
+  }
+
+  isTiltEnabled(): boolean {
+    return this.tiltEnabled;
+  }
+
+  setTiltEnabled(enabled: boolean): void {
+    this.tiltEnabled = enabled;
+    if (enabled) {
+      this.calibrateTilt();
+      this.requestTiltPermission().catch(() => {});
+    } else {
+      this.manualTiltActive = false;
+      this.manualTiltX = 0;
+      this.manualTiltY = 0;
+      this.flickJumpLatched = false;
+    }
+  }
+
+  toggleTiltEnabled(): boolean {
+    this.setTiltEnabled(!this.tiltEnabled);
+    return this.tiltEnabled;
+  }
+
+  calibrateTilt(): void {
+    if (this.sensorActive) {
+      this.baseRollDeg = this.rawRollDeg;
+      this.basePitchDeg = this.rawPitchDeg;
+    } else {
+      this.baseRollDeg = 0;
+      this.basePitchDeg = 30;
+    }
+  }
+
+  async requestTiltPermission(): Promise<boolean> {
+    this.permissionRequested = true;
+    let granted = true;
+    try {
+      const doe = DeviceOrientationEvent as unknown as {
+        requestPermission?: () => Promise<'granted' | 'denied' | 'default'>;
+      };
+      if (typeof doe !== 'undefined' && typeof doe.requestPermission === 'function') {
+        const res = await doe.requestPermission();
+        if (res !== 'granted') granted = false;
+      }
+    } catch {
+      // Ignore permission errors on non-iOS or non-HTTPS origins
+    }
+    try {
+      const dme = DeviceMotionEvent as unknown as {
+        requestPermission?: () => Promise<'granted' | 'denied' | 'default'>;
+      };
+      if (typeof dme !== 'undefined' && typeof dme.requestPermission === 'function') {
+        const res = await dme.requestPermission();
+        if (res !== 'granted') granted = false;
+      }
+    } catch {
+      // Ignore permission errors
+    }
+    return granted;
+  }
+
+  setManualTilt(nx: number, ny: number, active: boolean): void {
+    this.manualTiltActive = active;
+    if (active) {
+      this.manualTiltX = Math.max(-1, Math.min(1, nx));
+      this.manualTiltY = Math.max(-1, Math.min(1, ny));
+    } else {
+      this.manualTiltX = 0;
+      this.manualTiltY = 0;
+    }
   }
 
   setVirtualButton(btn: GBCButton, pressed: boolean): void {
@@ -138,7 +296,47 @@ export class InputManager {
       this.prevCombined[b] = isNowHeld;
     }
 
-    return { held, justPressed, justReleased };
+    // Tilt is strictly driven by the TILT ON/OFF state + physical sensor (never by arrow keys / D-Pad)
+    let x = 0;
+    let y = 0;
+    let rollDeg = 0;
+    let pitchDeg = 0;
+    let source: TiltState['source'] = 'idle';
+
+    if (this.tiltEnabled) {
+      if (this.manualTiltActive) {
+        source = 'sensor';
+        x = this.manualTiltX;
+        y = this.manualTiltY;
+        rollDeg = Math.max(-90, Math.min(90, x * 28));
+        pitchDeg = Math.max(-90, Math.min(90, y * 28));
+      } else if (this.sensorActive) {
+        source = 'sensor';
+        rollDeg = Math.max(-90, Math.min(90, this.rawRollDeg - this.baseRollDeg));
+        pitchDeg = Math.max(-90, Math.min(90, this.rawPitchDeg - this.basePitchDeg));
+        x = Math.max(-1, Math.min(1, rollDeg / 28));
+        y = Math.max(-1, Math.min(1, pitchDeg / 28));
+      }
+    }
+
+    const angleDeg = ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+    const magnitude = Math.min(1, Math.hypot(x, y));
+    const flickJump = this.tiltEnabled ? this.flickJumpLatched : false;
+    this.flickJumpLatched = false;
+
+    const tilt: TiltState = {
+      x,
+      y,
+      rollDeg,
+      pitchDeg,
+      angleDeg,
+      magnitude,
+      flickJump,
+      source,
+      sensorActive: this.tiltEnabled && (this.sensorActive || this.manualTiltActive),
+    };
+
+    return { held, justPressed, justReleased, tilt };
   }
 
   private pollGamepad(): Record<GBCButton, boolean> {

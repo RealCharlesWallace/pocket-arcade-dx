@@ -81,21 +81,6 @@ export function createKirbyTiltCartridge(): GameCartridge {
   const accentHex = '#ffe858';
   const hwEmulator = new GBHardwareEmulator();
 
-  let deviceTiltX = 0;
-  let deviceTiltY = 0;
-  let orientationBound = false;
-
-  function bindDeviceOrientation(): void {
-    if (orientationBound || typeof window === 'undefined') return;
-    orientationBound = true;
-    window.addEventListener('deviceorientation', (e) => {
-      if (typeof e.gamma === 'number' && typeof e.beta === 'number') {
-        deviceTiltX = Math.max(-1, Math.min(1, e.gamma / 28));
-        deviceTiltY = Math.max(-1, Math.min(1, (e.beta - 35) / 28));
-      }
-    });
-  }
-
   function createDefaultProfiles(): KirbyProfile[] {
     return [
       {
@@ -151,6 +136,8 @@ export function createKirbyTiltCartridge(): GameCartridge {
     score: 0,
     timer: 60,
     stage: 1,
+    lastRollDeg: 0,
+    lastPitchDeg: 0,
     starPickups: [] as StarPickup[],
     bumpers: [] as BumperPin[],
   };
@@ -235,7 +222,7 @@ export function createKirbyTiltCartridge(): GameCartridge {
             : bootTarget;
       hwEmulator.fastForwardKirbyBoot(slot, effectiveTarget);
       state.mode = 'EMU_ROM';
-      state.ctx?.audio.stopBGM();
+      state.ctx?.audio.startBGM('kirby' as any);
       return true;
     }
     return false;
@@ -281,16 +268,16 @@ export function createKirbyTiltCartridge(): GameCartridge {
       return;
     }
 
-    const dirX = (input.held.right ? 1 : 0) - (input.held.left ? 1 : 0) + deviceTiltX;
-    const dirY = (input.held.down ? 1 : 0) - (input.held.up ? 1 : 0) + deviceTiltY;
+    const dirX = Math.max(-1, Math.min(1, (input.held.right ? 1 : 0) - (input.held.left ? 1 : 0) + input.tilt.x));
+    const dirY = Math.max(-1, Math.min(1, (input.held.down ? 1 : 0) - (input.held.up ? 1 : 0) + input.tilt.y));
 
     state.vx = (state.vx + dirX * 220 * dt) * 0.92;
     state.vy = (state.vy + dirY * 220 * dt) * 0.92;
     state.kx = Math.max(20, Math.min(140, state.kx + state.vx * dt));
     state.ky = Math.max(40, Math.min(570, state.ky + state.vy * dt));
 
-    // Pop / Flip jump with A
-    if (input.justPressed.a && state.kz <= 0.1) {
+    // Pop / Flip jump with A or upward phone flick
+    if ((input.justPressed.a || input.tilt.flickJump) && state.kz <= 0.1) {
       state.vz = 95;
       state.ctx.audio.playJump();
     }
@@ -363,7 +350,9 @@ export function createKirbyTiltCartridge(): GameCartridge {
     });
     drawPixelText(
       ctx,
-      state.romReady ? '1MB GBC ROM & TILT READY' : 'LOADING KIRBY GBC ROM...',
+      state.romReady
+        ? `TILT:${Math.round(state.lastRollDeg)},${Math.round(state.lastPitchDeg)} · GBC ROM READY`
+        : 'LOADING KIRBY GBC ROM...',
       80,
       12,
       {
@@ -489,7 +478,18 @@ export function createKirbyTiltCartridge(): GameCartridge {
       color: '#ffe858',
       size: 4,
     });
-    drawPixelText(ctx, `SCORE:${String(state.score).padStart(5, '0')}`, 156, 3, {
+    drawPixelText(
+      ctx,
+      `TILT:${Math.round(state.lastRollDeg)},${Math.round(state.lastPitchDeg)}`,
+      80,
+      3,
+      {
+        color: '#ffffff',
+        size: 3.7,
+        align: 'center',
+      }
+    );
+    drawPixelText(ctx, `SC:${String(state.score).padStart(4, '0')}`, 156, 3, {
       color: '#ff98c8',
       size: 4,
       align: 'right',
@@ -516,13 +516,13 @@ export function createKirbyTiltCartridge(): GameCartridge {
 
     init(context: GameContext) {
       state.ctx = context;
+      (hwEmulator as unknown as { setAudio?: (a: unknown) => void }).setAudio?.(context.audio);
       state.profileCursor = 0;
       state.mode = 'PROFILES';
-      bindDeviceOrientation();
       loadProfiles();
       initTiltCourse();
       state.romReady = Boolean(BUNDLED_KIRBY_ROM);
-      context.audio.startBGM('platformer');
+      context.audio.startBGM('kirby' as any);
 
       const params = new URLSearchParams(window.location.search);
       const urlMode = params.get('mode')?.toLowerCase();
@@ -550,6 +550,8 @@ export function createKirbyTiltCartridge(): GameCartridge {
 
     update(dt: number, input: InputState) {
       state.animTime += dt;
+      state.lastRollDeg = input.tilt.rollDeg;
+      state.lastPitchDeg = input.tilt.pitchDeg;
 
       if (state.mode === 'EMU_ROM' && hwEmulator.isRunningHardware()) {
         if (input.held.select && input.justPressed.b) {
@@ -559,9 +561,14 @@ export function createKirbyTiltCartridge(): GameCartridge {
           return;
         }
 
-        // Feed combined D-Pad + DeviceOrientation tilt into MBC7 gyro registers
-        const tiltX = (input.held.right ? 1 : 0) - (input.held.left ? 1 : 0) + deviceTiltX;
-        const tiltY = (input.held.down ? 1 : 0) - (input.held.up ? 1 : 0) + deviceTiltY;
+        // Feed Phone Tilt (plus optional D-Pad fallback inside Kirby ROM) into MBC7 gyro registers
+        const tiltX = Math.max(-1, Math.min(1, (input.held.right ? 1 : 0) - (input.held.left ? 1 : 0) + input.tilt.x));
+        const tiltY = input.tilt.flickJump
+          ? -1.0
+          : Math.max(-1, Math.min(1, (input.held.down ? 1 : 0) - (input.held.up ? 1 : 0) + input.tilt.y));
+        if (input.tilt.flickJump) {
+          state.ctx?.audio.playJump();
+        }
         hwEmulator.setTilt(tiltX, tiltY);
         hwEmulator.step(dt, input);
 

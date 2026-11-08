@@ -19,6 +19,7 @@ export class StageScene {
   private overlayButtons: Partial<Record<GBCButton, HTMLElement>> = {};
   private gateEl: HTMLElement | null = null;
   private settingsNavEl: HTMLElement | null = null;
+  private tiltHudEl: HTMLElement | null = null;
   private lastWidth = 0;
   private lastHeight = 0;
 
@@ -28,6 +29,8 @@ export class StageScene {
   private actionPointerId: number | null = null;
   private hoveredRaycastButton: GBCButton | null = null;
   private zoomedIn = false;
+  private deviceTiltX = 0;
+  private deviceTiltY = 0;
 
   private dpadScreenX = 0;
   private dpadScreenY = 0;
@@ -51,6 +54,7 @@ export class StageScene {
 
     this.gateEl = document.getElementById('gate');
     this.settingsNavEl = document.getElementById('settings-nav');
+    this.tiltHudEl = document.getElementById('tilt-hud');
 
     const initW = container.clientWidth || window.innerWidth;
     const initH = container.clientHeight || window.innerHeight;
@@ -368,6 +372,11 @@ export class StageScene {
     return this.zoomedIn;
   }
 
+  setDeviceTilt(tx: number, ty: number): void {
+    this.deviceTiltX = Math.max(-1, Math.min(1, tx));
+    this.deviceTiltY = Math.max(-1, Math.min(1, ty));
+  }
+
   private updateCameraFraming(instant = false): void {
     const aspect = Math.max(0.35, this.camera.aspect);
     const isNarrow = aspect < 0.85;
@@ -415,6 +424,20 @@ export class StageScene {
       const clampedY = Math.max(4, Math.min(28, rawY));
       this.settingsNavEl.style.left = `${clampedX.toFixed(1)}px`;
       this.settingsNavEl.style.top = `${clampedY.toFixed(1)}px`;
+    }
+
+    // Anchor #tilt-hud high in the upper-right corner of the 3D Game Boy shell (symmetric with #settings-nav)
+    if (this.tiltHudEl) {
+      this.tempCenter.set(1.54, 2.86, 0.44);
+      this.gbc.root.localToWorld(this.tempCenter);
+      this.tempCenter.project(this.camera);
+      const rawX = (this.tempCenter.x * 0.5 + 0.5) * cw;
+      const rawY = (-this.tempCenter.y * 0.5 + 0.5) * ch;
+      const clampedRight = Math.max(6, Math.min(cw - 120, cw - rawX));
+      const clampedY = Math.max(4, Math.min(28, rawY));
+      this.tiltHudEl.style.right = `${clampedRight.toFixed(1)}px`;
+      this.tiltHudEl.style.left = 'auto';
+      this.tiltHudEl.style.top = `${clampedY.toFixed(1)}px`;
     }
 
     // Compute exact screen-space center & radius of the 3D D-Pad for 360-degree angle sliding
@@ -484,9 +507,10 @@ export class StageScene {
     this.updateCameraFraming(false);
 
     const isNarrow = this.camera.aspect < 0.85;
-    // Keep the console stationary (no continuous wobble); only the 3D buttons move/tilt/depress
-    const targetRotY = this.zoomedIn ? -0.02 : isNarrow ? -0.04 : -0.12;
-    const targetRotX = this.zoomedIn ? 0.01 : isNarrow ? 0.015 : 0.03;
+    const baseRotY = this.zoomedIn ? -0.02 : isNarrow ? -0.04 : -0.12;
+    const baseRotX = this.zoomedIn ? 0.01 : isNarrow ? 0.015 : 0.03;
+    const targetRotY = baseRotY + this.deviceTiltX * 0.09;
+    const targetRotX = baseRotX + this.deviceTiltY * 0.09;
 
     this.gbc.root.rotation.y += (targetRotY - this.gbc.root.rotation.y) * Math.min(1, dt * 8);
     this.gbc.root.rotation.x += (targetRotX - this.gbc.root.rotation.x) * Math.min(1, dt * 8);

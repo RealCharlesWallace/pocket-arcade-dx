@@ -2,7 +2,6 @@ import type { GameCartridge } from '../core/types';
 import { froggerCartridge } from './frogger';
 import { kirbyTiltCartridge } from './kirby-tilt-n-tumble';
 import { linksQuestCartridge } from './links-quest';
-import { pocketBrawlCartridge } from './pocket-brawl';
 import { pokemonBlueCartridge, pokemonRedCartridge } from './pocket-monsters';
 import { romLoaderCartridge } from './rom-loader';
 import { streetRacerCartridge } from './street-racer';
@@ -22,7 +21,6 @@ export const CARTRIDGE_REGISTRY: GameCartridge[] = [
   kirbyTiltCartridge,
   pokemonRedCartridge,
   pokemonBlueCartridge,
-  pocketBrawlCartridge,
   linksQuestCartridge,
   superPixelLandCartridge,
   tetrablockDxCartridge,
