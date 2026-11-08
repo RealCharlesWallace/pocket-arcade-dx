@@ -533,6 +533,18 @@ function bootstrap(): void {
   const firstCart = systemOS.getSelectedCartridge();
   stageScene.getModel().setCartridgeAppearance(firstCart.cartridgeColor, firstCart.accentColor);
 
+  // Support URL query params (?cart=pokemon-red, ?cart=pokemon-blue, ?carousel=1) for deep-linking & simulator testing
+  const urlParams = new URLSearchParams(window.location.search);
+  const autoCart = urlParams.get('cart');
+  const autoCarousel = urlParams.get('carousel');
+  if (autoCart) {
+    powerOnConsole();
+    systemOS.launchCartridgeById(autoCart);
+  } else if (autoCarousel === '1') {
+    powerOnConsole();
+    systemOS.returnToCarousel();
+  }
+
   // Main 60fps animation loop
   let lastTime = performance.now();
   const animate = (now: number) => {

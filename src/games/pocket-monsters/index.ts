@@ -1,4 +1,9 @@
-import { GBHardwareEmulator } from '../../core/gb-emulator';
+import {
+  buildHardwareTestRom,
+  customizeGen1Sram,
+  GBHardwareEmulator,
+  parseGen1SramSummary,
+} from '../../core/gb-emulator';
 import {
   drawGBCBox,
   drawHealthBar,
@@ -381,7 +386,15 @@ const MAP_ROWS = [
   'TTTTTTTTTT',
 ];
 
-type Mode = 'TITLE' | 'OVERWORLD' | 'STARTER_SELECT' | 'ENCOUNTER_FLASH' | 'BATTLE' | 'DIALOG' | 'EMU_ROM';
+type Mode =
+  | 'PROFILES'
+  | 'TITLE'
+  | 'OVERWORLD'
+  | 'STARTER_SELECT'
+  | 'ENCOUNTER_FLASH'
+  | 'BATTLE'
+  | 'DIALOG'
+  | 'EMU_ROM';
 
 interface SaveProgress {
   party: PartyMonster[];
@@ -389,6 +402,50 @@ interface SaveProgress {
   potions: number;
   wins: number;
   badges: number;
+}
+
+export interface TrainerAccountProfile {
+  slot: number;
+  playerName: string;
+  rivalName: string;
+  badges: number;
+  badgesMask: number;
+  pokedexOwned: number;
+  hours: number;
+  minutes: number;
+  locationLabel: string;
+  hasSave: boolean;
+}
+
+const BUNDLED_ROM_CACHE: Record<VersionId, Uint8Array | null> = {
+  RED: null,
+  BLUE: null,
+};
+let BUNDLED_BASE_SRAM: Uint8Array | null = null;
+const BUNDLED_LOAD_PROMISES: Partial<Record<VersionId, Promise<void>>> = {};
+
+async function ensureBundledRomAndSram(version: VersionId): Promise<void> {
+  if (BUNDLED_ROM_CACHE[version] && BUNDLED_BASE_SRAM) return;
+  if (!BUNDLED_LOAD_PROMISES[version]) {
+    const romUrl = version === 'RED' ? '/roms/pokemon-red.gb' : '/roms/pokemon-blue.gb';
+    BUNDLED_LOAD_PROMISES[version] = (async () => {
+      try {
+        const [romRes, sramRes] = await Promise.all([
+          BUNDLED_ROM_CACHE[version] ? Promise.resolve(null) : fetch(romUrl),
+          BUNDLED_BASE_SRAM ? Promise.resolve(null) : fetch('/roms/pokemon-red-base.sav'),
+        ]);
+        if (romRes && romRes.ok) {
+          BUNDLED_ROM_CACHE[version] = new Uint8Array(await romRes.arrayBuffer());
+        }
+        if (sramRes && sramRes.ok) {
+          BUNDLED_BASE_SRAM = new Uint8Array(await sramRes.arrayBuffer());
+        }
+      } catch (err) {
+        console.warn(`Failed to fetch bundled ${version} ROM/SRAM:`, err);
+      }
+    })();
+  }
+  await BUNDLED_LOAD_PROMISES[version];
 }
 
 function getSpecies(id: string): MonsterSpecies {
@@ -417,6 +474,9 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
   const badgeName = isRed ? 'BOULDERBADGE' : 'CASCADEBADGE';
   const primaryHex = isRed ? '#d82828' : '#1e58d8';
   const accentHex = isRed ? '#ff7838' : '#48b8ff';
+  const sgbPalette: [number, number, number, number] = isRed
+    ? [0xfff4f0, 0xf89878, 0xd82828, 0x181018]
+    : [0xf0f6ff, 0x68b8f8, 0x1e58d8, 0x101828];
 
   const wildPool = isRed
     ? ['charmander', 'pikachu', 'growlithe', 'bulbasaur', 'onix', 'mewtwo']
@@ -424,10 +484,56 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
 
   const hwEmulator = new GBHardwareEmulator();
 
+  function createDefaultProfiles(): TrainerAccountProfile[] {
+    return [
+      {
+        slot: 0,
+        playerName: isRed ? 'RED' : 'BLUE',
+        rivalName: isRed ? 'BLUE' : 'RED',
+        badges: 1,
+        badgesMask: isRed ? 0x01 : 0x02,
+        pokedexOwned: isRed ? 4 : 5,
+        hours: 2,
+        minutes: isRed ? 15 : 40,
+        locationLabel: 'PALLET TOWN',
+        hasSave: true,
+      },
+      {
+        slot: 1,
+        playerName: isRed ? 'ASH' : 'GARY',
+        rivalName: isRed ? 'GARY' : 'ASH',
+        badges: 8,
+        badgesMask: 0xff,
+        pokedexOwned: 151,
+        hours: isRed ? 42 : 38,
+        minutes: isRed ? 30 : 45,
+        locationLabel: 'INDIGO / PALLET',
+        hasSave: true,
+      },
+      {
+        slot: 2,
+        playerName: 'NEW TRAINER',
+        rivalName: isRed ? 'BLUE' : 'RED',
+        badges: 0,
+        badgesMask: 0x00,
+        pokedexOwned: 0,
+        hours: 0,
+        minutes: 0,
+        locationLabel: 'PROF. OAK INTRO',
+        hasSave: false,
+      },
+    ];
+  }
+
   const state = {
     ctx: null as unknown as GameContext,
     animTime: 0,
-    mode: 'TITLE' as Mode,
+    mode: 'PROFILES' as Mode,
+    profiles: createDefaultProfiles(),
+    profileCursor: 0,
+    activeProfileSlot: 0,
+    sramSyncTimer: 0,
+    romReady: false,
     titleCursor: 0, // 0: PLAY KANTO, 1: GYM LEADER, 2: LOAD .GB ROM
     starterCursor: isRed ? 0 : 1, // 0: CHARMANDER, 1: SQUIRTLE, 2: BULBASAUR
     playerX: 3,
@@ -458,6 +564,83 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
     catchShakeTimer: 0,
   };
 
+  function getProfileSramKey(slot: number): string {
+    return `${cartId}-sram-v3-slot-${slot}`;
+  }
+
+  function loadAndSyncProfiles(): void {
+    if (!state.ctx) return;
+    const defaults = createDefaultProfiles();
+    const savedProfiles = state.ctx.storage.loadData<TrainerAccountProfile[] | null>(
+      `${cartId}-profiles-v3`,
+      null
+    );
+    state.profiles = savedProfiles && savedProfiles.length === 3 ? savedProfiles : defaults;
+
+    // Ensure each profile with hasSave has a valid 32KB SRAM in storage and sync live stats from SRAM
+    for (const prof of state.profiles) {
+      let sram = state.ctx.storage.loadData<number[] | null>(getProfileSramKey(prof.slot), null);
+      if ((!sram || sram.length < 0x3524) && prof.hasSave && BUNDLED_BASE_SRAM) {
+        sram = customizeGen1Sram(BUNDLED_BASE_SRAM, {
+          playerName: prof.playerName,
+          rivalName: prof.rivalName,
+          badgesMask: prof.badgesMask,
+          pokedexOwnedCount: prof.pokedexOwned,
+          hours: prof.hours,
+          minutes: prof.minutes,
+        });
+        state.ctx.storage.saveData<number[]>(getProfileSramKey(prof.slot), sram);
+      }
+      const summary = parseGen1SramSummary(sram);
+      if (summary && summary.hasValidSave) {
+        prof.playerName = summary.playerName;
+        prof.badges = summary.badges;
+        prof.pokedexOwned = summary.pokedexOwned;
+        prof.hours = summary.hours;
+        prof.minutes = summary.minutes;
+        prof.hasSave = true;
+      }
+    }
+    state.ctx.storage.saveData<TrainerAccountProfile[]>(`${cartId}-profiles-v3`, state.profiles);
+  }
+
+  function bootProfileIntoRealRom(
+    slot: number,
+    bootTarget: 'TITLE' | 'MAIN_MENU' | 'CONTINUE_INFO' | 'CONTINUE_GAME' | 'OAK_INTRO' = 'CONTINUE_INFO'
+  ): boolean {
+    const romBytes = BUNDLED_ROM_CACHE[version] ?? hwEmulator.getRawBytes();
+    if (!romBytes) return false;
+
+    state.activeProfileSlot = slot;
+    state.profileCursor = slot;
+    const prof = state.profiles[slot] ?? state.profiles[0];
+
+    let sram = state.ctx?.storage.loadData<number[] | null>(getProfileSramKey(slot), null) ?? null;
+    if ((!sram || sram.length < 0x3524) && prof.hasSave && BUNDLED_BASE_SRAM) {
+      sram = customizeGen1Sram(BUNDLED_BASE_SRAM, {
+        playerName: prof.playerName,
+        rivalName: prof.rivalName,
+        badgesMask: prof.badgesMask,
+        pokedexOwnedCount: prof.pokedexOwned,
+        hours: prof.hours,
+        minutes: prof.minutes,
+      });
+      state.ctx?.storage.saveData<number[]>(getProfileSramKey(slot), sram);
+    }
+
+    const effectiveSram = bootTarget === 'OAK_INTRO' || !prof.hasSave ? null : sram;
+    const meta = hwEmulator.loadRom(`${cartId}.gb`, romBytes, effectiveSram, sgbPalette);
+    if (meta.isExecutable && hwEmulator.isRunningHardware()) {
+      const target =
+        bootTarget === 'CONTINUE_INFO' && !prof.hasSave ? 'OAK_INTRO' : bootTarget;
+      hwEmulator.fastForwardGen1Boot(target);
+      state.mode = 'EMU_ROM';
+      state.ctx?.audio.stopBGM();
+      return true;
+    }
+    return false;
+  }
+
   function saveProgress(): void {
     if (!state.ctx) return;
     state.ctx.storage.saveData<SaveProgress>(cartId, {
@@ -467,17 +650,42 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
       wins: state.wins,
       badges: state.badges,
     });
-    state.ctx.storage.setHighScore(
-      cartId,
-      state.wins * 100 + state.badges * 250 + state.party.length * 50
-    );
 
     if (hwEmulator.isRunningHardware()) {
-      const sram = hwEmulator.extractSram();
-      if (sram.length > 0) {
+      const { sram, summary } = hwEmulator.extractGen1SramWithLiveSync();
+      if (sram.length > 0 && summary && summary.hasValidSave) {
+        const slot = state.activeProfileSlot;
+        state.ctx.storage.saveData<number[]>(getProfileSramKey(slot), sram);
         state.ctx.storage.saveData<number[]>(`${cartId}-sram`, sram);
+        const prof = state.profiles[slot];
+        if (prof) {
+          prof.playerName = summary.playerName;
+          prof.badges = summary.badges;
+          prof.pokedexOwned = summary.pokedexOwned;
+          prof.hours = summary.hours;
+          prof.minutes = summary.minutes;
+          prof.hasSave = true;
+          prof.locationLabel = 'KANTO SAVE';
+          state.ctx.storage.saveData<TrainerAccountProfile[]>(
+            `${cartId}-profiles-v3`,
+            state.profiles
+          );
+        }
       }
     }
+
+    const bestProfileBadges = Math.max(
+      state.badges,
+      ...state.profiles.map((p) => (p.hasSave ? p.badges : 0))
+    );
+    const bestDex = Math.max(
+      state.party.length,
+      ...state.profiles.map((p) => (p.hasSave ? p.pokedexOwned : 0))
+    );
+    state.ctx.storage.setHighScore(
+      cartId,
+      state.wins * 100 + bestProfileBadges * 250 + bestDex * 25
+    );
   }
 
   function showDialog(l1: string, l2 = ''): void {
@@ -625,7 +833,46 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
     });
   }
 
+  function updateProfiles(input: InputState): void {
+    if (input.justPressed.up && state.profileCursor > 0) {
+      state.profileCursor--;
+      state.ctx.audio.playMenuMove();
+    } else if (input.justPressed.down && state.profileCursor < 2) {
+      state.profileCursor++;
+      state.ctx.audio.playMenuMove();
+    } else if (input.justPressed.b) {
+      state.ctx.audio.playMenuBack();
+      state.mode = 'TITLE';
+    } else if (input.justPressed.select) {
+      // SELECT boots the real ROM directly onto its iconic Title Screen / New Game
+      state.ctx.audio.playMenuSelect();
+      if (!bootProfileIntoRealRom(state.profileCursor, 'TITLE')) {
+        ensureBundledRomAndSram(version).then(() => {
+          state.romReady = Boolean(BUNDLED_ROM_CACHE[version]);
+          loadAndSyncProfiles();
+          bootProfileIntoRealRom(state.profileCursor, 'TITLE');
+        });
+      }
+    } else if (input.justPressed.a || input.justPressed.start) {
+      state.ctx.audio.playMenuSelect();
+      const chosen = state.profiles[state.profileCursor];
+      const target = chosen?.hasSave ? 'CONTINUE_INFO' : 'OAK_INTRO';
+      if (!bootProfileIntoRealRom(state.profileCursor, target)) {
+        ensureBundledRomAndSram(version).then(() => {
+          state.romReady = Boolean(BUNDLED_ROM_CACHE[version]);
+          loadAndSyncProfiles();
+          bootProfileIntoRealRom(state.profileCursor, target);
+        });
+      }
+    }
+  }
+
   function updateTitle(input: InputState): void {
+    if (input.justPressed.b) {
+      state.ctx.audio.playMenuBack();
+      state.mode = 'PROFILES';
+      return;
+    }
     if (input.justPressed.up && state.titleCursor > 0) {
       state.titleCursor--;
       state.ctx.audio.playMenuMove();
@@ -635,12 +882,7 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
     } else if (input.justPressed.a || input.justPressed.start) {
       state.ctx.audio.playMenuSelect();
       if (state.titleCursor === 0) {
-        if (hwEmulator.isRunningHardware()) {
-          state.mode = 'EMU_ROM';
-        } else {
-          state.mode = 'OVERWORLD';
-          state.ctx.audio.startBGM('monster_town');
-        }
+        state.mode = 'PROFILES';
       } else if (state.titleCursor === 1) {
         startBattle(false, gymBossId, 9, gymLeaderName);
       } else if (state.titleCursor === 2) {
@@ -910,6 +1152,93 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
         }
       }
     }
+  }
+
+  function renderProfiles(ctx: CanvasRenderingContext2D): void {
+    // Super Game Boy Red / Blue border & cream backdrop
+    ctx.fillStyle = isRed ? '#fff4f0' : '#f0f6ff';
+    ctx.fillRect(0, 0, 160, 144);
+
+    // Top Version & ROM Status Banner
+    ctx.fillStyle = primaryHex;
+    ctx.fillRect(0, 0, 160, 22);
+    ctx.fillStyle = accentHex;
+    ctx.fillRect(0, 20, 160, 2);
+
+    drawPixelText(ctx, `POKEMON ${version} - ACCOUNTS`, 80, 3, {
+      color: '#f8e838',
+      size: 5,
+      align: 'center',
+      shadow: '#181818',
+    });
+    drawPixelText(
+      ctx,
+      state.romReady ? '1MB GEN-1 ROM & SRAM READY' : 'LOADING GEN-1 ROM...',
+      80,
+      12,
+      {
+        color: '#ffffff',
+        size: 3.8,
+        align: 'center',
+      }
+    );
+
+    // 3 Trainer Account Profile Cards
+    state.profiles.forEach((prof, idx) => {
+      const sel = state.profileCursor === idx;
+      const by = 25 + idx * 34;
+
+      drawGBCBox(ctx, 5, by, 150, 31, {
+        bg: sel ? '#ffffff' : '#edece2',
+        borderOuter: sel ? primaryHex : '#889098',
+        borderInner: sel ? accentHex : '#c8ccd0',
+      });
+
+      if (sel) {
+        drawPixelText(ctx, '>', 10, by + 6, { color: primaryHex, size: 5 });
+      }
+
+      if (prof.hasSave) {
+        const timeStr = `${String(prof.hours).padStart(2, '0')}:${String(prof.minutes).padStart(2, '0')}`;
+        drawPixelText(ctx, `FILE ${idx + 1}: ${prof.playerName}`, 18, by + 5, {
+          color: sel ? '#101820' : '#384450',
+          size: 4.5,
+        });
+        drawPixelText(ctx, 'CONTINUE', 148, by + 5, {
+          color: primaryHex,
+          size: 4,
+          align: 'right',
+        });
+        drawPixelText(
+          ctx,
+          `BDG:${prof.badges}  DEX:${String(prof.pokedexOwned).padStart(3, '0')}  TIME:${timeStr}`,
+          18,
+          by + 17,
+          {
+            color: sel ? '#203828' : '#586470',
+            size: 4,
+          }
+        );
+      } else {
+        drawPixelText(ctx, `FILE ${idx + 1}: + START NEW GAME`, 18, by + 6, {
+          color: sel ? primaryHex : '#384450',
+          size: 4.5,
+        });
+        drawPixelText(ctx, 'PROF. OAK INTRO / FRESH SAVE', 18, by + 17, {
+          color: '#586470',
+          size: 3.8,
+        });
+      }
+    });
+
+    // Footer instruction bar
+    ctx.fillStyle = '#182028';
+    ctx.fillRect(0, 129, 160, 15);
+    drawPixelText(ctx, 'A/START:BOOT ROM  SEL:TITLE', 80, 134, {
+      color: '#f8e838',
+      size: 4,
+      align: 'center',
+    });
   }
 
   function renderTitle(ctx: CanvasRenderingContext2D): void {
@@ -1305,21 +1634,66 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
       state.playerX = 3;
       state.playerY = 3;
       state.titleCursor = 0;
-      state.mode = hwEmulator.isRunningHardware() ? 'EMU_ROM' : 'TITLE';
+      state.profileCursor = 0;
+      state.mode = 'PROFILES';
       context.audio.startBGM('monster_town');
+
+      const params = new URLSearchParams(window.location.search);
+      const urlMode = params.get('mode')?.toLowerCase();
+      const urlSlot = Math.max(0, Math.min(2, Number(params.get('slot') ?? '0') || 0));
+
+      loadAndSyncProfiles();
+      state.romReady = Boolean(BUNDLED_ROM_CACHE[version]);
+
+      ensureBundledRomAndSram(version).then(() => {
+        state.romReady = Boolean(BUNDLED_ROM_CACHE[version]);
+        loadAndSyncProfiles();
+
+        if (urlMode === 'title') {
+          bootProfileIntoRealRom(urlSlot, 'TITLE');
+        } else if (urlMode === 'continue') {
+          bootProfileIntoRealRom(urlSlot, 'CONTINUE_INFO');
+        } else if (urlMode === 'game') {
+          bootProfileIntoRealRom(urlSlot, 'CONTINUE_GAME');
+        } else if (urlMode === 'newgame') {
+          bootProfileIntoRealRom(2, 'OAK_INTRO');
+        }
+      });
+
+      if (urlMode === 'profiles') {
+        state.mode = 'PROFILES';
+        state.profileCursor = urlSlot;
+      } else if (urlMode === 'oak') {
+        state.mode = 'STARTER_SELECT';
+      } else if (urlMode === 'overworld') {
+        state.mode = 'OVERWORLD';
+      } else if (urlMode === 'gym') {
+        startBattle(false, gymBossId, 9, gymLeaderName);
+        state.battlePhase = 'MENU';
+        state.flashTimer = 0;
+        state.mode = 'BATTLE';
+      } else if (urlMode === 'hwrom') {
+        const demoRom = buildHardwareTestRom(isRed ? 'POKEMON RED' : 'POKEMON BLUE');
+        hwEmulator.loadRom(`${cartId}-test.gb`, demoRom, null, sgbPalette);
+        state.mode = 'EMU_ROM';
+        context.audio.stopBGM();
+      }
     },
 
     onRomLoaded(fileName: string, bytes: Uint8Array) {
-      const savedSram = state.ctx?.storage.loadData<number[] | null>(`${cartId}-sram`, null);
-      const sgbPalette: [number, number, number, number] = isRed
-        ? [0xfff4f0, 0xf89878, 0xd82828, 0x181018]
-        : [0xf0f6ff, 0x68b8f8, 0x1e58d8, 0x101828];
+      BUNDLED_ROM_CACHE[version] = bytes;
+      state.romReady = true;
+      const savedSram = state.ctx?.storage.loadData<number[] | null>(
+        getProfileSramKey(state.activeProfileSlot),
+        null
+      );
       const meta = hwEmulator.loadRom(fileName, bytes, savedSram, sgbPalette);
       if (meta.isExecutable && hwEmulator.isRunningHardware()) {
+        hwEmulator.fastForwardGen1Boot('TITLE');
         state.mode = 'EMU_ROM';
         state.ctx?.audio.stopBGM();
       } else {
-        state.mode = 'TITLE';
+        state.mode = 'PROFILES';
       }
     },
 
@@ -1328,11 +1702,25 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
       if (state.moveCooldown > 0) state.moveCooldown -= dt;
 
       if (state.mode === 'EMU_ROM' && hwEmulator.isRunningHardware()) {
+        // Holding SELECT + pressing B returns to the Trainer Accounts / Profile Switcher
+        if (input.held.select && input.justPressed.b) {
+          saveProgress();
+          state.mode = 'PROFILES';
+          state.ctx?.audio.playMenuBack();
+          return;
+        }
         hwEmulator.step(dt, input);
+        state.sramSyncTimer += dt;
+        if (state.sramSyncTimer >= 2.5) {
+          state.sramSyncTimer = 0;
+          saveProgress();
+        }
         return;
       }
 
-      if (state.mode === 'TITLE') {
+      if (state.mode === 'PROFILES') {
+        updateProfiles(input);
+      } else if (state.mode === 'TITLE') {
         updateTitle(input);
       } else if (state.mode === 'STARTER_SELECT') {
         updateStarterSelect(input);
@@ -1360,7 +1748,9 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
         }
       }
 
-      if (state.mode === 'TITLE') {
+      if (state.mode === 'PROFILES') {
+        renderProfiles(ctx);
+      } else if (state.mode === 'TITLE') {
         renderTitle(ctx);
       } else if (state.mode === 'STARTER_SELECT') {
         renderStarterSelect(ctx);
