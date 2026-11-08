@@ -34,11 +34,16 @@ export class GameBoyColor3D {
   private screenMat: THREE.MeshBasicMaterial;
 
   private dpadGroup = new THREE.Group();
+  private dpadArrowMats: Partial<Record<GBCButton, THREE.MeshStandardMaterial>> = {};
   private bodyMesh!: THREE.Mesh;
   private btnAMesh!: THREE.Mesh;
   private btnBMesh!: THREE.Mesh;
   private btnStartMesh!: THREE.Mesh;
   private btnSelectMesh!: THREE.Mesh;
+  private matA!: THREE.MeshPhysicalMaterial;
+  private matB!: THREE.MeshPhysicalMaterial;
+  private matSelect!: THREE.MeshStandardMaterial;
+  private matStart!: THREE.MeshStandardMaterial;
   private powerSwitchMesh!: THREE.Mesh;
 
   private buttonTargets: Record<GBCButton, number> = {
@@ -222,17 +227,34 @@ export class GameBoyColor3D {
     seamMesh.position.set(0, 0, 0.04);
     this.root.add(seamMesh);
 
-    // Upper side grip ribs (5 sculpted horizontal ribs on both sides, like reference GBC)
-    const ribGeo = new THREE.CapsuleGeometry(0.032, 0.24, 8, 12);
-    ribGeo.rotateX(Math.PI / 2);
+    // Sculpted 3D front perimeter bevel ridge inside the viewport so full-bleed mobile still shows 3D hardware contour
+    const frontRidgeShape = this.createRoundedRectShape(3.04, 5.18, 0.18, 0.50, 0.30, 0.14);
+    const frontRidgeHole = this.createRoundedRectShape(2.96, 5.10, 0.16, 0.48, 0.28, 0.14);
+    frontRidgeShape.holes.push(frontRidgeHole);
+    const frontRidgeGeo = new THREE.ExtrudeGeometry(frontRidgeShape, {
+      depth: 0.014,
+      bevelEnabled: true,
+      bevelSegments: 4,
+      steps: 1,
+      bevelSize: 0.018,
+      bevelThickness: 0.014,
+    });
+    frontRidgeGeo.center();
+    const frontRidgeMesh = new THREE.Mesh(frontRidgeGeo, this.shellMat);
+    frontRidgeMesh.position.set(0, 0, 0.432);
+    this.root.add(frontRidgeMesh);
+
+    // Upper side grip ribs (5 sculpted horizontal ribs visible along the upper edges)
+    const ribGeo = new THREE.CapsuleGeometry(0.032, 0.22, 8, 12);
+    ribGeo.rotateZ(Math.PI / 2);
     for (let i = 0; i < 5; i++) {
       const ry = 2.36 - i * 0.11;
       const leftRib = new THREE.Mesh(ribGeo, this.shellMat);
-      leftRib.position.set(-1.69, ry, 0.06);
+      leftRib.position.set(-1.51, ry, 0.425);
       this.root.add(leftRib);
 
       const rightRib = new THREE.Mesh(ribGeo, this.shellMat);
-      rightRib.position.set(1.69, ry, 0.06);
+      rightRib.position.set(1.51, ry, 0.425);
       this.root.add(rightRib);
     }
 
@@ -456,28 +478,29 @@ export class GameBoyColor3D {
     centerDip.position.z = 0.095;
     this.dpadGroup.add(centerDip);
 
-    // 3D Raised Molded Directional Triangles on the D-Pad arms
-    const arrowMat = new THREE.MeshStandardMaterial({
-      color: 0x2c313a,
-      roughness: 0.25,
-      metalness: 0.15,
-    });
-    const makeArrowMesh = (rotZ: number, x: number, y: number) => {
+    // 3D Raised Molded Directional Triangles on the D-Pad arms (each with independent hover/press glow)
+    const makeArrowMesh = (dir: GBCButton, rotZ: number, x: number, y: number) => {
+      const arrowMat = new THREE.MeshStandardMaterial({
+        color: 0x323842,
+        roughness: 0.25,
+        metalness: 0.15,
+      });
+      this.dpadArrowMats[dir] = arrowMat;
       const s = new THREE.Shape();
       s.moveTo(0, 0.075);
       s.lineTo(-0.065, -0.045);
       s.lineTo(0.065, -0.045);
       s.closePath();
-      const g = new THREE.ExtrudeGeometry(s, { depth: 0.022, bevelEnabled: false });
+      const g = new THREE.ExtrudeGeometry(s, { depth: 0.024, bevelEnabled: false });
       const m = new THREE.Mesh(g, arrowMat);
       m.rotation.z = rotZ;
       m.position.set(x, y, 0.105);
       this.dpadGroup.add(m);
     };
-    makeArrowMesh(0, 0, 0.30);               // Up
-    makeArrowMesh(Math.PI, 0, -0.30);        // Down
-    makeArrowMesh(Math.PI / 2, -0.30, 0);    // Left
-    makeArrowMesh(-Math.PI / 2, 0.30, 0);    // Right
+    makeArrowMesh('up', 0, 0, 0.30);               // Up
+    makeArrowMesh('down', Math.PI, 0, -0.30);      // Down
+    makeArrowMesh('left', Math.PI / 2, -0.30, 0);  // Left
+    makeArrowMesh('right', -Math.PI / 2, 0.30, 0); // Right
 
     // 4 directional raycast hit boxes on the D-Pad arms
     const hitMat = new THREE.MeshBasicMaterial({ visible: false });
@@ -512,14 +535,14 @@ export class GameBoyColor3D {
     btnGeo.rotateX(Math.PI / 2);
     btnGeo.rotateZ(Math.PI / 2);
 
-    const matA = new THREE.MeshPhysicalMaterial({
+    this.matA = new THREE.MeshPhysicalMaterial({
       map: this.createButtonLabelTexture('A', '#1d2026', '#d8dce2'),
       roughness: 0.20,
       metalness: 0.14,
       clearcoat: 0.65,
       clearcoatRoughness: 0.15,
     });
-    const matB = new THREE.MeshPhysicalMaterial({
+    this.matB = new THREE.MeshPhysicalMaterial({
       map: this.createButtonLabelTexture('B', '#1d2026', '#d8dce2'),
       roughness: 0.20,
       metalness: 0.14,
@@ -527,14 +550,14 @@ export class GameBoyColor3D {
       clearcoatRoughness: 0.15,
     });
 
-    this.btnAMesh = new THREE.Mesh(btnGeo, matA);
+    this.btnAMesh = new THREE.Mesh(btnGeo, this.matA);
     this.btnAMesh.position.set(0.94, -0.80, 0.46);
     this.btnAMesh.userData = { control: 'a' };
     this.interactiveMeshes.push(this.btnAMesh);
     this.buttonMeshes.a = this.btnAMesh;
     this.root.add(this.btnAMesh);
 
-    this.btnBMesh = new THREE.Mesh(btnGeo, matB);
+    this.btnBMesh = new THREE.Mesh(btnGeo, this.matB);
     this.btnBMesh.position.set(0.38, -1.08, 0.46);
     this.btnBMesh.userData = { control: 'b' };
     this.interactiveMeshes.push(this.btnBMesh);
@@ -542,22 +565,35 @@ export class GameBoyColor3D {
     this.root.add(this.btnBMesh);
 
     // --- ERGONOMICALLY LOWERED SELECT & START RUBBER PILLS (y = -1.92) ---
+    // Recessed stadium wells under SELECT & START
+    const pillWellGeo = new THREE.PlaneGeometry(0.40, 0.16);
+    const selectWell = new THREE.Mesh(pillWellGeo, wellMat);
+    selectWell.position.set(-0.26, -1.92, 0.433);
+    const startWell = new THREE.Mesh(pillWellGeo, wellMat);
+    startWell.position.set(0.26, -1.92, 0.433);
+    this.root.add(selectWell, startWell);
+
     const pillGeo = new THREE.CapsuleGeometry(0.06, 0.23, 10, 18);
     pillGeo.rotateZ(Math.PI / 2);
-    const pillMat = new THREE.MeshStandardMaterial({
+    this.matSelect = new THREE.MeshStandardMaterial({
+      color: 0x2c3036,
+      roughness: 0.55,
+      metalness: 0.08,
+    });
+    this.matStart = new THREE.MeshStandardMaterial({
       color: 0x2c3036,
       roughness: 0.55,
       metalness: 0.08,
     });
 
-    this.btnSelectMesh = new THREE.Mesh(pillGeo, pillMat);
+    this.btnSelectMesh = new THREE.Mesh(pillGeo, this.matSelect);
     this.btnSelectMesh.position.set(-0.26, -1.92, 0.445);
     this.btnSelectMesh.userData = { control: 'select' };
     this.interactiveMeshes.push(this.btnSelectMesh);
     this.buttonMeshes.select = this.btnSelectMesh;
     this.root.add(this.btnSelectMesh);
 
-    this.btnStartMesh = new THREE.Mesh(pillGeo, pillMat);
+    this.btnStartMesh = new THREE.Mesh(pillGeo, this.matStart);
     this.btnStartMesh.position.set(0.26, -1.92, 0.445);
     this.btnStartMesh.userData = { control: 'start' };
     this.interactiveMeshes.push(this.btnStartMesh);
@@ -655,9 +691,12 @@ export class GameBoyColor3D {
     this.shellMat.roughness = theme.roughness;
   }
 
-  setMobileFullBleed(_enabled: boolean, _minHeightWorld = 5.4): void {
-    // Keep 1:1 true 3D proportions so the sculpted bevels, side ribs, and curved bottom chin remain visible
-    if (this.bodyMesh) {
+  setMobileFullBleed(enabled: boolean, minHeightWorld = 5.4): void {
+    if (!this.bodyMesh) return;
+    if (enabled) {
+      const scaleY = Math.max(1.03, minHeightWorld / 5.25);
+      this.bodyMesh.scale.set(1.02, scaleY, 1);
+    } else {
       this.bodyMesh.scale.set(1, 1, 1);
     }
   }
@@ -671,6 +710,10 @@ export class GameBoyColor3D {
     this.buttonTargets[btn] = pressed ? 1 : 0;
   }
 
+  isButtonPressed(btn: GBCButton): boolean {
+    return this.buttonTargets[btn] > 0.5;
+  }
+
   setButtonHover(btn: GBCButton, hovered: boolean): void {
     this.buttonHover[btn] = hovered ? 1 : 0;
   }
@@ -682,11 +725,14 @@ export class GameBoyColor3D {
       this.hoverCurrent[k] += (this.buttonHover[k] - this.hoverCurrent[k]) * speed;
     });
 
-    // D-Pad physical tilt + hover lift
-    const tiltX = (this.buttonCurrent.down - this.buttonCurrent.up) * 0.17;
-    const tiltY = (this.buttonCurrent.right - this.buttonCurrent.left) * 0.17;
-    this.dpadGroup.rotation.x = tiltX;
-    this.dpadGroup.rotation.y = tiltY;
+    // D-Pad physical rocker tilt + hover tilt + arrow emissive feedback
+    const pressTiltX = (this.buttonCurrent.down - this.buttonCurrent.up) * 0.25;
+    const pressTiltY = (this.buttonCurrent.right - this.buttonCurrent.left) * 0.25;
+    const hoverTiltX = (this.hoverCurrent.down - this.hoverCurrent.up) * 0.09;
+    const hoverTiltY = (this.hoverCurrent.right - this.hoverCurrent.left) * 0.09;
+    this.dpadGroup.rotation.x = pressTiltX + hoverTiltX;
+    this.dpadGroup.rotation.y = pressTiltY + hoverTiltY;
+
     const dpadDepress = Math.max(
       this.buttonCurrent.up,
       this.buttonCurrent.down,
@@ -699,13 +745,44 @@ export class GameBoyColor3D {
       this.hoverCurrent.left,
       this.hoverCurrent.right
     );
-    this.dpadGroup.position.z = 0.46 + dpadHover * 0.018 - dpadDepress * 0.032;
+    this.dpadGroup.position.z = 0.46 + dpadHover * 0.022 - dpadDepress * 0.048;
 
-    // A / B / Start / Select hover lift & physical depression
-    this.btnAMesh.position.z = 0.46 + this.hoverCurrent.a * 0.022 - this.buttonCurrent.a * 0.055;
-    this.btnBMesh.position.z = 0.46 + this.hoverCurrent.b * 0.022 - this.buttonCurrent.b * 0.055;
-    this.btnSelectMesh.position.z = 0.445 + this.hoverCurrent.select * 0.015 - this.buttonCurrent.select * 0.038;
-    this.btnStartMesh.position.z = 0.445 + this.hoverCurrent.start * 0.015 - this.buttonCurrent.start * 0.038;
+    for (const dir of ['up', 'down', 'left', 'right'] as const) {
+      const mat = this.dpadArrowMats[dir];
+      if (!mat) continue;
+      const p = this.buttonCurrent[dir];
+      const h = this.hoverCurrent[dir];
+      if (p > 0.05) {
+        mat.emissive.setHex(0x58f888);
+        mat.emissiveIntensity = p * 0.9;
+      } else if (h > 0.05) {
+        mat.emissive.setHex(0x46b8b8);
+        mat.emissiveIntensity = h * 0.55;
+      } else {
+        mat.emissive.setHex(0x000000);
+        mat.emissiveIntensity = 0;
+      }
+    }
+
+    // A / B physical hover lift, press depression, scale & emissive rim
+    this.btnAMesh.position.z = 0.46 + this.hoverCurrent.a * 0.032 - this.buttonCurrent.a * 0.075;
+    this.btnBMesh.position.z = 0.46 + this.hoverCurrent.b * 0.032 - this.buttonCurrent.b * 0.075;
+    const scaleA = 1 + this.hoverCurrent.a * 0.04 - this.buttonCurrent.a * 0.04;
+    const scaleB = 1 + this.hoverCurrent.b * 0.04 - this.buttonCurrent.b * 0.04;
+    this.btnAMesh.scale.set(scaleA, scaleA, 1);
+    this.btnBMesh.scale.set(scaleB, scaleB, 1);
+    this.matA.emissive.setHex(this.buttonCurrent.a > 0.05 ? 0x287848 : 0x1b4f4f);
+    this.matA.emissiveIntensity = Math.max(this.buttonCurrent.a * 0.65, this.hoverCurrent.a * 0.35);
+    this.matB.emissive.setHex(this.buttonCurrent.b > 0.05 ? 0x287848 : 0x1b4f4f);
+    this.matB.emissiveIntensity = Math.max(this.buttonCurrent.b * 0.65, this.hoverCurrent.b * 0.35);
+
+    // Select / Start rubber pill hover lift & press squish
+    this.btnSelectMesh.position.z = 0.445 + this.hoverCurrent.select * 0.022 - this.buttonCurrent.select * 0.048;
+    this.btnStartMesh.position.z = 0.445 + this.hoverCurrent.start * 0.022 - this.buttonCurrent.start * 0.048;
+    this.matSelect.emissive.setHex(this.buttonCurrent.select > 0.05 ? 0x287848 : 0x1b4f4f);
+    this.matSelect.emissiveIntensity = Math.max(this.buttonCurrent.select * 0.6, this.hoverCurrent.select * 0.35);
+    this.matStart.emissive.setHex(this.buttonCurrent.start > 0.05 ? 0x287848 : 0x1b4f4f);
+    this.matStart.emissiveIntensity = Math.max(this.buttonCurrent.start * 0.6, this.hoverCurrent.start * 0.35);
 
     // Power switch position
     const targetSwitchY = this.isPowered ? 1.62 : 1.48;

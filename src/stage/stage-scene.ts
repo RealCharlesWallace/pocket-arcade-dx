@@ -77,9 +77,9 @@ export class StageScene {
     this.screenTexture.colorSpace = THREE.SRGBColorSpace;
 
     this.gbc = new GameBoyColor3D(this.screenTexture);
-    // Start with a subtle 3D perspective angle so side ribs, bevels, and power switch are immediately visible
-    this.gbc.root.rotation.y = -0.14;
-    this.gbc.root.rotation.x = 0.04;
+    // Keep the console steady with a subtle fixed 3D angle so 3D button height & bevel depth show without wobbling
+    this.gbc.root.rotation.y = -0.05;
+    this.gbc.root.rotation.x = 0.02;
     this.scene.add(this.gbc.root);
 
     for (const btn of ALL_GBC_BUTTONS) {
@@ -216,15 +216,17 @@ export class StageScene {
     const aspect = Math.max(0.35, this.camera.aspect);
     const isNarrow = aspect < 0.85;
 
-    // Closer camera framing so the Game Boy and its enlarged 10:9 LCD fill the screen while showing 3D bevels & side ribs
-    let targetX = isNarrow ? 0.10 : 0.08;
+    this.gbc.setMobileFullBleed(isNarrow, 3.06 / aspect + 0.65);
+
+    // Tight, close framing so the Game Boy fills the viewport with no wasted space around it
+    let targetX = isNarrow ? 0.01 : 0.04;
     let targetY = isNarrow ? -0.08 : 0.02;
-    let targetZ = isNarrow ? 0.44 + 5.20 / aspect : Math.max(8.2, 5.05 / aspect);
+    let targetZ = isNarrow ? 0.44 + 4.70 / aspect : Math.max(8.0, 4.90 / aspect);
 
     if (this.zoomedIn) {
-      targetX = isNarrow ? 0.06 : 0.08;
+      targetX = isNarrow ? 0.05 : 0.08;
       targetY = isNarrow ? 1.18 : 1.26;
-      targetZ = isNarrow ? 0.42 + 3.45 / aspect : Math.max(3.85, 3.55 / aspect);
+      targetZ = isNarrow ? 0.44 + 3.45 / aspect : Math.max(3.85, 3.55 / aspect);
     }
 
     if (instant) {
@@ -303,22 +305,18 @@ export class StageScene {
       el.style.height = `${pxH.toFixed(1)}px`;
       el.style.opacity = inViewport ? '1' : '0';
       el.style.pointerEvents = inViewport ? 'auto' : 'none';
+      el.classList.toggle('is-pressed', this.gbc.isButtonPressed(btn));
     }
   }
 
-  render(dt: number, time: number): void {
+  render(dt: number, _time: number): void {
     this.syncViewportSize();
     this.updateCameraFraming(false);
 
     const isNarrow = this.camera.aspect < 0.85;
-    // Authentic 3D perspective angle showing sculpted right side ribs, power switch & bevels + hover-over tilt
-    const baseRotY = this.zoomedIn ? -0.04 : isNarrow ? -0.18 : -0.21;
-    const baseRotX = this.zoomedIn ? 0.01 : 0.035;
-    const tiltAllowance = this.zoomedIn ? 0.04 : isNarrow ? 0.10 : 0.20;
-    const targetRotY =
-      baseRotY + this.pointerNormX * tiltAllowance + Math.sin(time * 0.85) * 0.018;
-    const targetRotX =
-      baseRotX - this.pointerNormY * (tiltAllowance * 0.7) + Math.cos(time * 0.65) * 0.014;
+    // Keep the console stationary (no continuous wobble); only the 3D buttons move/tilt/depress
+    const targetRotY = this.zoomedIn ? -0.02 : isNarrow ? -0.04 : -0.12;
+    const targetRotX = this.zoomedIn ? 0.01 : isNarrow ? 0.015 : 0.03;
 
     this.gbc.root.rotation.y += (targetRotY - this.gbc.root.rotation.y) * Math.min(1, dt * 8);
     this.gbc.root.rotation.x += (targetRotX - this.gbc.root.rotation.x) * Math.min(1, dt * 8);

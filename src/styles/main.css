@@ -991,13 +991,16 @@
 
   .touch-btn:active,
   .touch-pill:active,
-  .touch-action:active {
-    transform: translate(-50%, -47%) scale(0.95);
-    background: rgba(88, 248, 136, 0.32);
+  .touch-action:active,
+  .touch-btn.is-pressed,
+  .touch-pill.is-pressed,
+  .touch-action.is-pressed {
+    transform: translate(-50%, -46%) scale(0.93);
+    background: rgba(88, 248, 136, 0.34);
     border-color: #58f888;
     box-shadow:
-      0 0 16px rgba(88, 248, 136, 0.65),
-      inset 0 0 10px rgba(88, 248, 136, 0.35);
+      0 0 16px rgba(88, 248, 136, 0.7),
+      inset 0 3px 10px rgba(0, 0, 0, 0.55);
   }
 
   @media (max-width: 900px), (pointer: coarse) {
