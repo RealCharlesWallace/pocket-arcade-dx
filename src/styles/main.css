@@ -220,19 +220,20 @@
     display: block;
   }
 
-  /* Power-On Gate (sadok.mx style) */
+  /* Power-On Gate (centered over the dark LCD screen before power-on) */
   .gate {
     position: fixed;
     inset-inline-start: 50%;
-    inset-block-end: 26px;
-    transform: translateX(-50%);
-    z-index: 12;
+    inset-block-start: 31%;
+    transform: translate(-50%, -50%);
+    z-index: 20;
     background: rgba(15, 17, 16, 0.92);
-    border: 1px solid rgba(232, 230, 220, 0.25);
-    padding: 14px 22px;
+    border: 1px solid rgba(232, 230, 220, 0.28);
+    padding: 12px 18px;
     backdrop-filter: blur(10px);
-    box-shadow: 0 14px 40px rgba(0, 0, 0, 0.65);
+    box-shadow: 0 14px 40px rgba(0, 0, 0, 0.72);
     transition: opacity 0.35s ease, transform 0.35s ease;
+    max-inline-size: min(300px, 84vw);
   }
 
   .gate[hidden] {
@@ -862,86 +863,56 @@
     color: var(--accent-bright);
   }
 
-  /* Touch Controls for Mobile / Coarse Pointers */
+  /* 3D-Projected Button Overlay (Bound to exact 3D Game Boy button positions) */
   .touch-controls {
-    display: none;
     position: fixed;
-    inset-inline: var(--gutter);
-    inset-block-end: 64px;
+    inset: 0;
     z-index: 11;
     pointer-events: none;
-    justify-content: space-between;
-    align-items: flex-end;
   }
 
-  .touch-dpad {
+  .touch-btn,
+  .touch-pill,
+  .touch-action {
+    position: fixed;
+    transform: translate(-50%, -50%);
     pointer-events: auto;
-    display: grid;
-    grid-template-columns: repeat(3, 40px);
-    grid-template-rows: repeat(3, 40px);
-    gap: 2px;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color 0.08s ease, border-color 0.08s ease;
   }
 
   .touch-btn {
-    background: rgba(23, 26, 24, 0.85);
-    border: 1px solid rgba(232, 230, 220, 0.3);
-    color: var(--bone);
-    font-size: 14px;
-    min-inline-size: 40px;
-    min-block-size: 40px;
-    padding: 0;
-    touch-action: manipulation;
-    user-select: none;
-  }
-
-  .touch-up { grid-column: 2; grid-row: 1; }
-  .touch-left { grid-column: 1; grid-row: 2; }
-  .touch-right { grid-column: 3; grid-row: 2; }
-  .touch-down { grid-column: 2; grid-row: 3; }
-
-  .touch-meta {
-    pointer-events: auto;
-    display: flex;
-    gap: 6px;
-    margin-block-end: 2px;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 3px;
   }
 
   .touch-pill {
-    background: rgba(23, 26, 24, 0.88);
-    border: 1px solid rgba(232, 230, 220, 0.3);
-    font-family: var(--font-pixel);
-    font-size: 7px;
-    padding: 6px 8px;
-    min-block-size: 28px;
-    border-radius: 10px;
-    touch-action: manipulation;
-    user-select: none;
-  }
-
-  .touch-ab {
-    pointer-events: auto;
-    display: flex;
-    gap: 8px;
-    margin-block-end: 8px;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 999px;
   }
 
   .touch-action {
-    inline-size: 46px;
-    block-size: 46px;
     border-radius: 50%;
-    background: rgba(139, 34, 82, 0.9);
-    border: 2px solid rgba(255, 255, 255, 0.45);
-    font-family: var(--font-pixel);
-    font-size: 11px;
-    color: #fff;
-    padding: 0;
-    touch-action: manipulation;
-    user-select: none;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.18);
   }
 
-  .touch-b {
-    margin-block-start: 18px;
-    background: rgba(108, 60, 184, 0.9);
+  .touch-btn:active,
+  .touch-pill:active,
+  .touch-action:active {
+    background: rgba(88, 248, 136, 0.28);
+    border-color: #58f888;
+    box-shadow: 0 0 10px rgba(88, 248, 136, 0.45);
   }
 
   @media (max-width: 900px), (pointer: coarse) {
@@ -950,6 +921,22 @@
     }
     .meta {
       font-size: 16px;
+    }
+    .gate {
+      padding: 8px 12px;
+    }
+    .gate-steps {
+      padding-inline-start: 16px;
+      gap: 6px;
+      font-size: 16px;
+    }
+    .gate-power-btn {
+      font-size: 8px;
+      padding: 6px 10px;
+      min-block-size: 30px;
+    }
+    .gate-sub {
+      font-size: 13px;
     }
     .toolbar {
       inset-inline: 8px;
@@ -964,11 +951,6 @@
       min-block-size: 32px;
       min-inline-size: 32px;
       gap: 4px;
-    }
-    .touch-controls {
-      display: flex;
-      inset-block-end: max(50px, calc(44px + env(safe-area-inset-bottom)));
-      z-index: 16;
     }
   }
 }

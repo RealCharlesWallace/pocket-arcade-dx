@@ -13,6 +13,18 @@ export const SHELL_THEMES: ShellTheme[] = [
 export class GameBoyColor3D {
   public readonly root = new THREE.Group();
   public readonly interactiveMeshes: THREE.Object3D[] = [];
+  public readonly buttonMeshes = {} as Record<GBCButton, THREE.Object3D>;
+  public readonly buttonSizes: Record<GBCButton, { w: number; h: number; zFront: number }> = {
+    up: { w: 0.28, h: 0.29, zFront: 0.03 },
+    down: { w: 0.28, h: 0.29, zFront: 0.03 },
+    left: { w: 0.29, h: 0.28, zFront: 0.03 },
+    right: { w: 0.29, h: 0.28, zFront: 0.03 },
+    a: { w: 0.42, h: 0.42, zFront: 0.08 },
+    b: { w: 0.42, h: 0.42, zFront: 0.08 },
+    select: { w: 0.34, h: 0.12, zFront: 0.055 },
+    start: { w: 0.34, h: 0.12, zFront: 0.055 },
+  };
+  public lcdMesh!: THREE.Mesh;
 
   private shellMat: THREE.MeshPhysicalMaterial;
   private cartridgeBodyMat: THREE.MeshStandardMaterial;
@@ -215,6 +227,7 @@ export class GameBoyColor3D {
     const lcdMesh = new THREE.Mesh(lcdGeo, this.screenMat);
     lcdMesh.position.set(0.08, 1.24, 0.398);
     lcdMesh.userData = { control: 'screen' };
+    this.lcdMesh = lcdMesh;
     this.interactiveMeshes.push(lcdMesh);
     this.root.add(lcdMesh);
 
@@ -267,21 +280,49 @@ export class GameBoyColor3D {
     const centerDip = new THREE.Mesh(centerDipGeo, new THREE.MeshStandardMaterial({ color: 0x181a1e, roughness: 0.5 }));
     this.dpadGroup.add(centerDip);
 
-    // 4 directional raycast hit boxes on the D-Pad
+    // Molded directional arrows on the 3D D-Pad arms
+    const dpadArrowCanvas = document.createElement('canvas');
+    dpadArrowCanvas.width = 256;
+    dpadArrowCanvas.height = 256;
+    const dctx = dpadArrowCanvas.getContext('2d')!;
+    dctx.clearRect(0, 0, 256, 256);
+    dctx.fillStyle = 'rgba(216, 220, 226, 0.38)';
+    const drawTri = (x1: number, y1: number, x2: number, y2: number, x3: number, y3: number) => {
+      dctx.beginPath();
+      dctx.moveTo(x1, y1);
+      dctx.lineTo(x2, y2);
+      dctx.lineTo(x3, y3);
+      dctx.closePath();
+      dctx.fill();
+    };
+    drawTri(128, 22, 108, 56, 148, 56);   // Up
+    drawTri(128, 234, 108, 200, 148, 200); // Down
+    drawTri(22, 128, 56, 108, 56, 148);   // Left
+    drawTri(234, 128, 200, 108, 200, 148); // Right
+    const dpadArrowTex = new THREE.CanvasTexture(dpadArrowCanvas);
+    const dpadArrowMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.84, 0.84),
+      new THREE.MeshBasicMaterial({ map: dpadArrowTex, transparent: true })
+    );
+    dpadArrowMesh.position.set(0, 0, 0.072);
+    this.dpadGroup.add(dpadArrowMesh);
+
+    // 4 directional raycast hit boxes on the D-Pad arms
     const hitMat = new THREE.MeshBasicMaterial({ visible: false });
-    const dirs: Array<{ dir: GBCButton; x: number; y: number }> = [
-      { dir: 'up', x: 0, y: 0.3 },
-      { dir: 'down', x: 0, y: -0.3 },
-      { dir: 'left', x: -0.3, y: 0 },
-      { dir: 'right', x: 0.3, y: 0 },
+    const dirs: Array<{ dir: GBCButton; x: number; y: number; w: number; h: number }> = [
+      { dir: 'up', x: 0, y: 0.285, w: 0.28, h: 0.29 },
+      { dir: 'down', x: 0, y: -0.285, w: 0.28, h: 0.29 },
+      { dir: 'left', x: -0.285, y: 0, w: 0.29, h: 0.28 },
+      { dir: 'right', x: 0.285, y: 0, w: 0.29, h: 0.28 },
     ];
     for (const d of dirs) {
-      const hitGeo = new THREE.BoxGeometry(0.34, 0.34, 0.24);
+      const hitGeo = new THREE.BoxGeometry(d.w, d.h, 0.24);
       const hitMesh = new THREE.Mesh(hitGeo, hitMat);
       hitMesh.position.set(d.x, d.y, 0.04);
       hitMesh.userData = { control: d.dir };
       this.dpadGroup.add(hitMesh);
       this.interactiveMeshes.push(hitMesh);
+      this.buttonMeshes[d.dir] = hitMesh;
     }
 
     this.root.add(this.dpadGroup);
@@ -306,12 +347,14 @@ export class GameBoyColor3D {
     this.btnAMesh.position.set(0.96, -0.42, 0.41);
     this.btnAMesh.userData = { control: 'a' };
     this.interactiveMeshes.push(this.btnAMesh);
+    this.buttonMeshes.a = this.btnAMesh;
     this.root.add(this.btnAMesh);
 
     this.btnBMesh = new THREE.Mesh(btnGeo, matB);
     this.btnBMesh.position.set(0.44, -0.68, 0.41);
     this.btnBMesh.userData = { control: 'b' };
     this.interactiveMeshes.push(this.btnBMesh);
+    this.buttonMeshes.b = this.btnBMesh;
     this.root.add(this.btnBMesh);
 
     // --- SELECT & START Rubber Pills ---
@@ -326,12 +369,14 @@ export class GameBoyColor3D {
     this.btnSelectMesh.position.set(-0.24, -1.52, 0.4);
     this.btnSelectMesh.userData = { control: 'select' };
     this.interactiveMeshes.push(this.btnSelectMesh);
+    this.buttonMeshes.select = this.btnSelectMesh;
     this.root.add(this.btnSelectMesh);
 
     this.btnStartMesh = new THREE.Mesh(pillGeo, pillMat);
     this.btnStartMesh.position.set(0.24, -1.52, 0.4);
     this.btnStartMesh.userData = { control: 'start' };
     this.interactiveMeshes.push(this.btnStartMesh);
+    this.buttonMeshes.start = this.btnStartMesh;
     this.root.add(this.btnStartMesh);
 
     // Printed SELECT / START label plate under pills
