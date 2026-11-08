@@ -219,7 +219,7 @@ function bootstrap(): void {
     stageContainer.focus();
   });
 
-  // Upper-Right Phone Tilt & Angle Monitor Toggle Button (TILT ON / OFF)
+  // Upper-Right Phone Tilt & Angle Monitor Toggle Button (TILT ON / OFF) + Touch-Drag Tilt Pad
   const syncTiltToggleUI = () => {
     const enabled = input.isTiltEnabled();
     tiltHud?.setAttribute('aria-pressed', String(enabled));
@@ -231,11 +231,61 @@ function bootstrap(): void {
   };
   syncTiltToggleUI();
 
+  let tiltDragPointerId: number | null = null;
+  let tiltDragStartX = 0;
+  let tiltDragStartY = 0;
+  let tiltDidDrag = false;
+
+  tiltHud?.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    tiltDragPointerId = e.pointerId;
+    tiltDragStartX = e.clientX;
+    tiltDragStartY = e.clientY;
+    tiltDidDrag = false;
+    try {
+      tiltHud.setPointerCapture(e.pointerId);
+    } catch {
+      // Ignore capture errors
+    }
+  });
+
+  tiltHud?.addEventListener('pointermove', (e) => {
+    if (tiltDragPointerId === null || e.pointerId !== tiltDragPointerId) return;
+    const dx = e.clientX - tiltDragStartX;
+    const dy = e.clientY - tiltDragStartY;
+    if (Math.hypot(dx, dy) > 6) {
+      tiltDidDrag = true;
+      if (!input.isTiltEnabled()) {
+        input.setTiltEnabled(true);
+        syncTiltToggleUI();
+      }
+      input.setManualTilt(dx / 42, dy / 42, true);
+    }
+  });
+
+  const endTiltHudDrag = (e: PointerEvent) => {
+    if (tiltDragPointerId === null || e.pointerId !== tiltDragPointerId) return;
+    tiltDragPointerId = null;
+    if (tiltDidDrag) {
+      input.setManualTilt(0, 0, false);
+    }
+  };
+  tiltHud?.addEventListener('pointerup', endTiltHudDrag);
+  tiltHud?.addEventListener('pointercancel', endTiltHudDrag);
+
   tiltHud?.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
+    if (tiltDidDrag) {
+      tiltDidDrag = false;
+      return;
+    }
     const enabled = input.toggleTiltEnabled();
+    if (enabled) {
+      input.requestTiltPermission().catch(() => {});
+    }
     syncTiltToggleUI();
+    audio.unlock();
     audio.playButtonClick();
     liveStatus.textContent = enabled
       ? 'Phone tilt sensor turned ON and calibrated to 0°, 0°.'
@@ -698,6 +748,49 @@ function bootstrap(): void {
   };
 
   requestAnimationFrame(animate);
+
+  // Dev diagnostic beacon so our local server can inspect the physical iPhone state in real time
+  if (window.location.port === '5173' || window.location.port === '5174') {
+    const sendDeviceDiag = (trigger: string) => {
+      try {
+        const doe = (typeof DeviceOrientationEvent !== 'undefined' ? DeviceOrientationEvent : undefined) as unknown as {
+          requestPermission?: unknown;
+        } | undefined;
+        const nav = navigator as Navigator & { audioSession?: { type?: string } };
+        const payload = {
+          ts: new Date().toISOString(),
+          trigger,
+          href: window.location.href,
+          ua: navigator.userAgent,
+          viewport: { w: window.innerWidth, h: window.innerHeight, dpr: window.devicePixelRatio },
+          isSecureContext: window.isSecureContext,
+          hasDeviceOrientation: typeof DeviceOrientationEvent !== 'undefined',
+          hasRequestPermission: Boolean(doe && typeof doe.requestPermission === 'function'),
+          sensorReceiving: input.isSensorReceiving(),
+          tiltEnabled: input.isTiltEnabled(),
+          tiltText: tiltAngleReadout?.textContent ?? '',
+          audioState: audio.getContextState(),
+          audioMuted: audio.isMuted(),
+          audioSessionType: nav.audioSession?.type ?? 'unsupported',
+          shellTheme: shellLabel.textContent,
+          activeCart: activeCartLabel.textContent,
+          poweredOn: systemOS.isPoweredOn(),
+          screenPng: screenCanvas.toDataURL('image/png'),
+        };
+        fetch('/__diag', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }).catch(() => {});
+      } catch {
+        // Ignore telemetry errors
+      }
+    };
+    setTimeout(() => sendDeviceDiag('load'), 600);
+    window.addEventListener('touchend', () => setTimeout(() => sendDeviceDiag('touchend'), 150), { passive: true });
+    window.addEventListener('click', () => setTimeout(() => sendDeviceDiag('click'), 150), { passive: true });
+    setInterval(() => sendDeviceDiag('heartbeat'), 5000);
+  }
 }
 
 bootstrap();

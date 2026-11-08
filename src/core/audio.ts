@@ -148,22 +148,58 @@ export class ChiptuneSynth {
   private lastApuFreq2 = 0;
   private lastApuTime2 = 0;
 
+  private htmlAudioUnlocked = false;
+
   constructor(initialMuted = false) {
     this.muted = initialMuted;
     if (typeof window !== 'undefined') {
       const unlockHandler = () => {
         this.unlock();
       };
-      const events = ['touchstart', 'touchend', 'pointerdown', 'mousedown', 'click', 'keydown'] as const;
+      const events = ['touchstart', 'touchend', 'pointerdown', 'pointerup', 'mousedown', 'click', 'keydown'] as const;
       for (const evt of events) {
         window.addEventListener(evt, unlockHandler, { capture: true, passive: true });
       }
     }
   }
 
+  getContextState(): string {
+    return this.ctx ? (this.ctx.state as string) : 'uninitialized';
+  }
+
   unlock(): void {
     if (this.muted) return;
-    const ctx = this.ensureContext();
+
+    // iOS 17+ / iOS 26 Safari: switch navigator.audioSession from 'ambient' to 'playback'
+    // so Web Audio plays through the iPhone speakers even when the hardware Silent Mode switch is ON.
+    try {
+      const nav = navigator as Navigator & { audioSession?: { type: string } };
+      if (nav.audioSession && nav.audioSession.type !== 'playback') {
+        nav.audioSession.type = 'playback';
+      }
+    } catch {
+      // Ignore on browsers without navigator.audioSession
+    }
+
+    // Fallback silent HTML5 <audio> clip to force iOS AVAudioSession into Playback category
+    if (!this.htmlAudioUnlocked && typeof Audio !== 'undefined') {
+      try {
+        const silentWav =
+          'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+        const el = new Audio(silentWav);
+        el.setAttribute('playsinline', 'true');
+        el.volume = 0.01;
+        el.play()
+          .then(() => {
+            this.htmlAudioUnlocked = true;
+          })
+          .catch(() => {});
+      } catch {
+        // Ignore HTML5 audio fallback errors
+      }
+    }
+
+    const ctx = this.ensureContext(true);
     if (!ctx) return;
 
     if ((ctx.state as string) !== 'running') {
@@ -172,6 +208,14 @@ export class ChiptuneSynth {
 
     if (!this.unlocked || (ctx.state as string) !== 'running') {
       try {
+        const osc = ctx.createOscillator();
+        const silentGain = ctx.createGain();
+        silentGain.gain.value = 0.00001;
+        osc.connect(silentGain);
+        silentGain.connect(ctx.destination);
+        osc.start(0);
+        osc.stop(ctx.currentTime + 0.001);
+
         const silentBuffer = ctx.createBuffer(1, 1, 22050);
         const src = ctx.createBufferSource();
         src.buffer = silentBuffer;
@@ -190,14 +234,14 @@ export class ChiptuneSynth {
     }
   }
 
-  private ensureContext(): AudioContext | null {
+  private ensureContext(allowCreate = false): AudioContext | null {
     if (this.muted) return null;
-    if (!this.ctx && typeof window !== 'undefined') {
+    if (!this.ctx && allowCreate && typeof window !== 'undefined') {
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (AudioCtx) {
         this.ctx = new AudioCtx();
         const master = this.ctx.createGain();
-        master.gain.value = 2.2;
+        master.gain.value = 2.4;
         if (typeof this.ctx.createDynamicsCompressor === 'function') {
           const comp = this.ctx.createDynamicsCompressor();
           comp.threshold.value = -14;
@@ -234,7 +278,7 @@ export class ChiptuneSynth {
 
   playTone(freq: number, duration: number, type: OscillatorType = 'square', volume = 0.08, slideTo?: number): void {
     const ctx = this.ensureContext();
-    if (!ctx || freq <= 0) return;
+    if (!ctx || (ctx.state as string) !== 'running' || freq <= 0) return;
 
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
@@ -256,7 +300,7 @@ export class ChiptuneSynth {
 
   playNoise(duration = 0.06, volume = 0.05): void {
     const ctx = this.ensureContext();
-    if (!ctx) return;
+    if (!ctx || (ctx.state as string) !== 'running') return;
 
     const sampleCount = Math.max(1, Math.floor(ctx.sampleRate * duration));
     const buffer = ctx.createBuffer(1, sampleCount, ctx.sampleRate);

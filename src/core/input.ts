@@ -170,17 +170,21 @@ export class InputManager {
       }
     });
 
-    const autoRequestOnce = () => {
+    const autoRequestOnGesture = () => {
       if (!this.permissionRequested && this.tiltEnabled) {
         this.requestTiltPermission().catch(() => {});
       }
     };
-    window.addEventListener('click', autoRequestOnce, { once: true, passive: true });
-    window.addEventListener('touchend', autoRequestOnce, { once: true, passive: true });
+    window.addEventListener('click', autoRequestOnGesture, { passive: true });
+    window.addEventListener('touchend', autoRequestOnGesture, { passive: true });
   }
 
   isTiltEnabled(): boolean {
     return this.tiltEnabled;
+  }
+
+  isSensorReceiving(): boolean {
+    return this.sensorActive || this.manualTiltActive;
   }
 
   setTiltEnabled(enabled: boolean): void {
@@ -212,29 +216,44 @@ export class InputManager {
   }
 
   async requestTiltPermission(): Promise<boolean> {
-    this.permissionRequested = true;
     let granted = true;
+    let hadPromptApi = false;
     try {
-      const doe = DeviceOrientationEvent as unknown as {
+      const doe = (typeof DeviceOrientationEvent !== 'undefined' ? DeviceOrientationEvent : undefined) as unknown as {
         requestPermission?: () => Promise<'granted' | 'denied' | 'default'>;
-      };
-      if (typeof doe !== 'undefined' && typeof doe.requestPermission === 'function') {
+      } | undefined;
+      if (doe && typeof doe.requestPermission === 'function') {
+        hadPromptApi = true;
         const res = await doe.requestPermission();
-        if (res !== 'granted') granted = false;
+        if (res === 'granted') {
+          this.permissionRequested = true;
+        } else {
+          granted = false;
+        }
       }
     } catch {
-      // Ignore permission errors on non-iOS or non-HTTPS origins
+      // iOS throws NotAllowedError if called on pointerdown instead of click/touchend;
+      // keep permissionRequested = false so the subsequent touchend/click retries!
+      granted = false;
     }
     try {
-      const dme = DeviceMotionEvent as unknown as {
+      const dme = (typeof DeviceMotionEvent !== 'undefined' ? DeviceMotionEvent : undefined) as unknown as {
         requestPermission?: () => Promise<'granted' | 'denied' | 'default'>;
-      };
-      if (typeof dme !== 'undefined' && typeof dme.requestPermission === 'function') {
+      } | undefined;
+      if (dme && typeof dme.requestPermission === 'function') {
+        hadPromptApi = true;
         const res = await dme.requestPermission();
-        if (res !== 'granted') granted = false;
+        if (res === 'granted') {
+          this.permissionRequested = true;
+        } else {
+          granted = false;
+        }
       }
     } catch {
-      // Ignore permission errors
+      granted = false;
+    }
+    if (!hadPromptApi) {
+      this.permissionRequested = true;
     }
     return granted;
   }
