@@ -795,10 +795,10 @@ function renderBattle(ctx: CanvasRenderingContext2D): void {
   ctx.fillRect(0, 0, 160, 144);
 
   // Enemy status HUD (Top Left)
-  drawGBCBox(ctx, 4, 4, 88, 28, { bg: '#f0eed8' });
-  drawPixelText(ctx, `${enemySp.name}`, 8, 8, { color: '#182018', size: 5 });
-  drawPixelText(ctx, `:L${enemyMon.level}`, 64, 8, { color: '#285828', size: 5 });
-  drawHealthBar(ctx, 10, 18, 74, 6, enemyMon.hp / enemyMon.maxHp);
+  drawGBCBox(ctx, 4, 4, 96, 28, { bg: '#f0eed8' });
+  drawPixelText(ctx, `${enemySp.name}`, 8, 8, { color: '#182018', size: 4.5 });
+  drawPixelText(ctx, `Lv${enemyMon.level}`, 96, 8, { color: '#285828', size: 4.5, align: 'right' });
+  drawHealthBar(ctx, 10, 18, 84, 6, enemyMon.hp / enemyMon.maxHp);
 
   // Enemy Monster Sprite (Top Right)
   const enemyBob = Math.round(Math.sin(state.animTime * 5) * 1.5);
@@ -815,7 +815,7 @@ function renderBattle(ctx: CanvasRenderingContext2D): void {
       ctx,
       enemySp.sprite,
       { '1': enemySp.color1, '2': enemySp.color2, '3': '#181818' },
-      104,
+      106,
       10 + enemyBob,
       3
     );
@@ -833,33 +833,33 @@ function renderBattle(ctx: CanvasRenderingContext2D): void {
   );
 
   // Player Status HUD (Middle Right)
-  drawGBCBox(ctx, 66, 56, 90, 34, { bg: '#f0eed8' });
-  drawPixelText(ctx, `${playerSp.name}`, 72, 60, { color: '#182018', size: 5 });
-  drawPixelText(ctx, `:L${playerMon.level}`, 128, 60, { color: '#285828', size: 5 });
-  drawHealthBar(ctx, 72, 70, 76, 6, playerMon.hp / playerMon.maxHp);
-  drawPixelText(ctx, `HP ${playerMon.hp}/${playerMon.maxHp}`, 72, 79, { color: '#182018', size: 5 });
+  drawGBCBox(ctx, 62, 56, 94, 34, { bg: '#f0eed8' });
+  drawPixelText(ctx, `${playerSp.name}`, 68, 60, { color: '#182018', size: 4.5 });
+  drawPixelText(ctx, `Lv${playerMon.level}`, 152, 60, { color: '#285828', size: 4.5, align: 'right' });
+  drawHealthBar(ctx, 68, 70, 82, 6, playerMon.hp / playerMon.maxHp);
+  drawPixelText(ctx, `HP ${playerMon.hp}/${playerMon.maxHp}`, 68, 79, { color: '#182018', size: 4.5 });
 
   // Bottom Command / Message Box
   drawGBCBox(ctx, 2, 94, 156, 48);
 
   if (state.battlePhase === 'MSG' || state.battlePhase === 'CATCH_ANIM') {
-    drawPixelText(ctx, state.battleMsg1, 10, 104, { color: '#182018', size: 6 });
+    drawPixelText(ctx, state.battleMsg1, 10, 104, { color: '#182018', size: 5.5 });
     drawPixelText(ctx, state.battleMsg2, 10, 120, { color: '#384838', size: 5 });
   } else if (state.battlePhase === 'MENU') {
-    drawPixelText(ctx, 'What will', 10, 104, { color: '#182018', size: 5 });
-    drawPixelText(ctx, `${playerSp.name} do?`, 10, 116, { color: '#182018', size: 5 });
+    drawPixelText(ctx, 'What will', 8, 104, { color: '#182018', size: 4.5 });
+    drawPixelText(ctx, `${playerSp.name} do?`, 8, 116, { color: '#182018', size: 4.2 });
 
-    drawGBCBox(ctx, 78, 94, 80, 48);
+    drawGBCBox(ctx, 72, 94, 86, 48);
     const opts = ['FIGHT', 'PKMN', state.isWild ? `BALL(${state.balls})` : `POTN(${state.potions})`, 'RUN'];
     opts.forEach((label, idx) => {
       const col = idx % 2;
       const row = Math.floor(idx / 2);
-      const ox = 86 + col * 36;
+      const ox = 80 + col * 42;
       const oy = 104 + row * 18;
       if (state.menuCursor === idx) {
-        drawPixelText(ctx, '>', ox - 6, oy, { color: '#d83030', size: 5 });
+        drawPixelText(ctx, '>', ox - 5, oy, { color: '#d83030', size: 4.5 });
       }
-      drawPixelText(ctx, label, ox, oy, { color: '#182018', size: 5 });
+      drawPixelText(ctx, label, ox, oy, { color: '#182018', size: 4.5 });
     });
   } else if (state.battlePhase === 'MOVES') {
     playerSp.moves.forEach((mv, idx) => {

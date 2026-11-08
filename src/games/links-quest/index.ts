@@ -343,9 +343,13 @@ function tryMovePlayer(room: RoomData, dx: number, dy: number): void {
   const nx = state.px + dx;
   const ny = state.py + dy;
 
-  // Room transitions (North / South doors)
-  if (ny < 18 && state.roomIdx < state.rooms.length - 1) {
-    if (state.roomIdx === 1 && !room.doorUnlocked) {
+  const cx = Math.floor((nx + 5) / 16);
+  const cy = Math.floor((ny + 5 - 16) / 16);
+  const tile = room.tiles[cy]?.[cx] ?? 'W';
+
+  // Room transitions (North / South doors in center columns 4 & 5)
+  if (ny < 21 && (cx === 4 || cx === 5) && state.roomIdx < state.rooms.length - 1) {
+    if (tile === 'L' && !room.doorUnlocked) {
       if (state.keys > 0) {
         state.keys--;
         room.doorUnlocked = true;
@@ -359,23 +363,19 @@ function tryMovePlayer(room: RoomData, dx: number, dy: number): void {
       }
     }
     state.roomIdx++;
-    state.py = 122;
+    state.py = 120;
     state.bannerText = state.rooms[state.roomIdx].name;
     state.bannerTimer = 1.5;
     return;
   }
 
-  if (ny > 130 && state.roomIdx > 0) {
+  if (ny > 124 && (cx === 4 || cx === 5) && state.roomIdx > 0) {
     state.roomIdx--;
     state.py = 24;
     state.bannerText = state.rooms[state.roomIdx].name;
     state.bannerTimer = 1.5;
     return;
   }
-
-  const cx = Math.floor((nx + 5) / 16);
-  const cy = Math.floor((ny + 5 - 16) / 16);
-  const tile = room.tiles[cy]?.[cx] ?? 'W';
 
   if (tile === 'C' && !room.chestOpened) {
     room.chestOpened = true;

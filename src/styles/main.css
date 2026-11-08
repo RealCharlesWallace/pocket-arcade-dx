@@ -877,18 +877,19 @@
   .touch-dpad {
     pointer-events: auto;
     display: grid;
-    grid-template-columns: repeat(3, 44px);
-    grid-template-rows: repeat(3, 44px);
-    gap: 3px;
+    grid-template-columns: repeat(3, 40px);
+    grid-template-rows: repeat(3, 40px);
+    gap: 2px;
   }
 
   .touch-btn {
     background: rgba(23, 26, 24, 0.85);
     border: 1px solid rgba(232, 230, 220, 0.3);
     color: var(--bone);
-    font-size: 16px;
-    min-inline-size: 44px;
-    min-block-size: 44px;
+    font-size: 14px;
+    min-inline-size: 40px;
+    min-block-size: 40px;
+    padding: 0;
     touch-action: manipulation;
     user-select: none;
   }
@@ -901,47 +902,73 @@
   .touch-meta {
     pointer-events: auto;
     display: flex;
-    gap: 8px;
+    gap: 6px;
+    margin-block-end: 2px;
   }
 
   .touch-pill {
-    background: rgba(23, 26, 24, 0.85);
+    background: rgba(23, 26, 24, 0.88);
     border: 1px solid rgba(232, 230, 220, 0.3);
     font-family: var(--font-pixel);
-    font-size: 8px;
-    padding: 8px 10px;
-    min-block-size: 32px;
-    border-radius: 12px;
+    font-size: 7px;
+    padding: 6px 8px;
+    min-block-size: 28px;
+    border-radius: 10px;
+    touch-action: manipulation;
+    user-select: none;
   }
 
   .touch-ab {
     pointer-events: auto;
     display: flex;
-    gap: 10px;
+    gap: 8px;
+    margin-block-end: 8px;
   }
 
   .touch-action {
-    inline-size: 52px;
-    block-size: 52px;
+    inline-size: 46px;
+    block-size: 46px;
     border-radius: 50%;
-    background: rgba(139, 34, 82, 0.88);
-    border: 2px solid rgba(255, 255, 255, 0.4);
+    background: rgba(139, 34, 82, 0.9);
+    border: 2px solid rgba(255, 255, 255, 0.45);
     font-family: var(--font-pixel);
-    font-size: 12px;
+    font-size: 11px;
     color: #fff;
+    padding: 0;
+    touch-action: manipulation;
+    user-select: none;
   }
 
   .touch-b {
-    margin-block-start: 16px;
-    background: rgba(108, 60, 184, 0.88);
+    margin-block-start: 18px;
+    background: rgba(108, 60, 184, 0.9);
   }
 
   @media (max-width: 900px), (pointer: coarse) {
     .keyhint {
       display: none;
     }
+    .meta {
+      font-size: 16px;
+    }
+    .toolbar {
+      inset-inline: 8px;
+      inset-block-end: max(8px, env(safe-area-inset-bottom));
+      justify-content: center;
+      gap: 4px;
+      flex-wrap: nowrap;
+    }
+    .tool-btn {
+      padding: 5px 7px;
+      font-size: 7px;
+      min-block-size: 32px;
+      min-inline-size: 32px;
+      gap: 4px;
+    }
     .touch-controls {
       display: flex;
+      inset-block-end: max(50px, calc(44px + env(safe-area-inset-bottom)));
+      z-index: 16;
     }
   }
 }

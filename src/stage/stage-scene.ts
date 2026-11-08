@@ -94,6 +94,12 @@ export class StageScene {
       const rect = container.getBoundingClientRect();
       this.pointerNormX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       this.pointerNormY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+      this.pointer.x = this.pointerNormX;
+      this.pointer.y = this.pointerNormY;
+      this.raycaster.setFromCamera(this.pointer, this.camera);
+      const hits = this.raycaster.intersectObjects(this.gbc.interactiveMeshes, false);
+      container.style.cursor = hits.length > 0 ? 'pointer' : 'default';
     });
 
     container.addEventListener('pointerdown', (e) => {
@@ -139,24 +145,27 @@ export class StageScene {
   }
 
   private updateCameraFraming(instant = false): void {
-    const aspect = this.camera.aspect;
+    const aspect = Math.max(0.35, this.camera.aspect);
     const isNarrow = aspect < 0.85;
 
-    let targetY = 0.08;
-    let targetZ = isNarrow ? 10.6 : 8.7;
+    let targetX = 0;
+    let targetY = isNarrow ? -0.15 : 0.08;
+    let targetZ = Math.max(8.7, 5.6 / aspect);
 
     if (this.zoomedIn) {
-      targetY = 1.22;
-      targetZ = isNarrow ? 5.1 : 3.95;
+      targetX = 0.08; // center directly on the active LCD mesh (x = 0.08)
+      targetY = isNarrow ? 0.92 : 1.22;
+      targetZ = Math.max(3.95, 3.65 / aspect);
     }
 
     if (instant) {
-      this.camera.position.set(0, targetY, targetZ);
-      this.camera.lookAt(0, targetY, 0);
+      this.camera.position.set(targetX, targetY, targetZ);
+      this.camera.lookAt(targetX, targetY, 0);
     } else {
-      this.camera.position.y += (targetY - this.camera.position.y) * 0.1;
-      this.camera.position.z += (targetZ - this.camera.position.z) * 0.1;
-      this.camera.lookAt(0, this.camera.position.y * 0.92, 0);
+      this.camera.position.x += (targetX - this.camera.position.x) * 0.12;
+      this.camera.position.y += (targetY - this.camera.position.y) * 0.12;
+      this.camera.position.z += (targetZ - this.camera.position.z) * 0.12;
+      this.camera.lookAt(this.camera.position.x, this.camera.position.y * 0.95, 0);
     }
   }
 

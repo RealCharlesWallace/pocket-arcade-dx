@@ -8,16 +8,42 @@ interface RomHeaderInfo {
   fileName: string;
   title: string;
   isGBC: boolean;
+  mbcName: string;
   romSizeKB: number;
   checksumHex: string;
   tilePreviewColors: number[][];
 }
 
+const GBC_HARDWARE_PALETTES: Array<{ name: string; colors: [string, string, string, string] }> = [
+  { name: 'DMG GREEN', colors: ['#9bbc0f', '#8bac0f', '#306230', '#0f380f'] },
+  { name: 'GBC BLUE', colors: ['#e8f8ff', '#68b8f8', '#2058b8', '#081838'] },
+  { name: 'GBC GOLD', colors: ['#fff8d8', '#f8b838', '#b84818', '#281008'] },
+  { name: 'GBC CYBER', colors: ['#f0d8ff', '#e848b8', '#582098', '#140824'] },
+];
+
+const MBC_NAMES: Record<number, string> = {
+  0x00: 'ROM ONLY',
+  0x01: 'MBC1',
+  0x02: 'MBC1+RAM',
+  0x03: 'MBC1+BAT',
+  0x05: 'MBC2',
+  0x06: 'MBC2+BAT',
+  0x11: 'MBC3',
+  0x13: 'MBC3+BAT',
+  0x19: 'MBC5',
+  0x1b: 'MBC5+BAT',
+};
+
 const state = {
   ctx: null as unknown as GameContext,
   romInfo: null as RomHeaderInfo | null,
+  viewMode: 'PLAY' as 'PLAY' | 'TILES',
+  paletteIdx: 0,
   demoX: 72,
-  demoY: 76,
+  demoY: 78,
+  starX: 40,
+  starY: 64,
+  score: 0,
   time: 0,
   tileOffset: 0,
   rawBytes: null as Uint8Array | null,
@@ -51,6 +77,9 @@ export const romLoaderCartridge: GameCartridge = {
 
   init(context: GameContext) {
     state.ctx = context;
+    state.score = 0;
+    state.demoX = 72;
+    state.demoY = 78;
     context.audio.startBGM('menu');
   },
 
@@ -67,105 +96,182 @@ export const romLoaderCartridge: GameCartridge = {
 
     const cgbFlag = bytes[0x0143] ?? 0;
     const isGBC = cgbFlag === 0x80 || cgbFlag === 0xc0 || fileName.toLowerCase().endsWith('.gbc');
+    const mbcCode = bytes[0x0147] ?? 0;
+    const mbcName = MBC_NAMES[mbcCode] ?? `MBC(0x${mbcCode.toString(16).toUpperCase()})`;
     const romSizeKB = Math.max(32, Math.round(bytes.length / 1024));
     const checksum = ((bytes[0x014e] ?? 0) << 8) | (bytes[0x014f] ?? 0);
 
-    // Decode 2BPP Game Boy tile data from ROM for live VRAM tile visualization
+    // Decode up to 256 non-empty 2BPP Game Boy tiles from the ROM
     const tiles: number[][] = [];
-    const startAddr = Math.min(0x0150, Math.max(0, bytes.length - 1600));
-    for (let t = 0; t < 40; t++) {
-      const base = startAddr + t * 16;
+    const startAddr = Math.min(0x0150, Math.max(0, bytes.length - 64));
+    for (let base = startAddr; base + 16 <= bytes.length && tiles.length < 256; base += 16) {
       const pixels: number[] = [];
+      let nonZero = 0;
       for (let row = 0; row < 8; row++) {
         const b1 = bytes[base + row * 2] ?? 0;
         const b2 = bytes[base + row * 2 + 1] ?? 0;
+        if (b1 !== 0 || b2 !== 0) nonZero++;
         for (let bit = 7; bit >= 0; bit--) {
           const lo = (b1 >> bit) & 1;
           const hi = (b2 >> bit) & 1;
           pixels.push((hi << 1) | lo);
         }
       }
-      tiles.push(pixels);
+      if (nonZero >= 2 || tiles.length < 24) {
+        tiles.push(pixels);
+      }
     }
 
     state.romInfo = {
       fileName,
       title: title.trim(),
       isGBC,
+      mbcName,
       romSizeKB,
       checksumHex: '0x' + checksum.toString(16).toUpperCase().padStart(4, '0'),
       tilePreviewColors: tiles,
     };
+    state.tileOffset = 0;
+    state.viewMode = 'TILES';
+    if (isGBC) state.paletteIdx = 1;
   },
 
   update(dt: number, input: InputState) {
     state.time += dt;
-    const spd = 55;
-    if (input.held.left) state.demoX = Math.max(12, state.demoX - spd * dt);
-    if (input.held.right) state.demoX = Math.min(136, state.demoX + spd * dt);
-    if (input.held.up) state.demoY = Math.max(54, state.demoY - spd * dt);
-    if (input.held.down) state.demoY = Math.min(106, state.demoY + spd * dt);
 
     if (input.justPressed.a) {
       state.ctx.audio.playMenuSelect();
       state.ctx.openRomFilePicker();
+      return;
     }
-    if (input.justPressed.b && state.rawBytes) {
-      state.tileOffset = (state.tileOffset + 8) % Math.max(8, state.romInfo?.tilePreviewColors.length ?? 8);
+
+    if (input.justPressed.b) {
+      state.viewMode = state.viewMode === 'PLAY' ? 'TILES' : 'PLAY';
       state.ctx.audio.playMenuMove();
+      return;
+    }
+
+    if (input.justPressed.start) {
+      state.paletteIdx = (state.paletteIdx + 1) % GBC_HARDWARE_PALETTES.length;
+      state.ctx.audio.playButtonClick();
+    }
+
+    if (state.viewMode === 'TILES' && state.romInfo) {
+      const total = Math.max(24, state.romInfo.tilePreviewColors.length);
+      if (input.justPressed.down || input.justPressed.right) {
+        state.tileOffset = (state.tileOffset + 8) % total;
+        state.ctx.audio.playButtonClick();
+      } else if (input.justPressed.up || input.justPressed.left) {
+        state.tileOffset = (state.tileOffset - 8 + total) % total;
+        state.ctx.audio.playButtonClick();
+      }
+      return;
+    }
+
+    // PLAY mode: controllable DMG/ROM sprite collecting data stars
+    const spd = 62;
+    if (input.held.left) state.demoX = Math.max(12, state.demoX - spd * dt);
+    if (input.held.right) state.demoX = Math.min(132, state.demoX + spd * dt);
+    if (input.held.up) state.demoY = Math.max(54, state.demoY - spd * dt);
+    if (input.held.down) state.demoY = Math.min(104, state.demoY + spd * dt);
+
+    if (Math.abs(state.demoX - state.starX) < 12 && Math.abs(state.demoY - state.starY) < 12) {
+      state.score += 50;
+      state.ctx.storage.setHighScore('rom-loader', state.score);
+      state.ctx.audio.playCoin();
+      state.starX = 16 + Math.floor(Math.random() * 116);
+      state.starY = 56 + Math.floor(Math.random() * 46);
     }
   },
 
   render(ctx: CanvasRenderingContext2D) {
+    const pal = GBC_HARDWARE_PALETTES[state.paletteIdx].colors;
+
     ctx.fillStyle = '#101818';
     ctx.fillRect(0, 0, 160, 144);
 
     drawGBCBox(ctx, 4, 4, 152, 36, { bg: '#182428', borderOuter: '#38e8b8' });
     if (!state.romInfo) {
-      drawPixelText(ctx, 'GBC ROM CARTRIDGE SLOT', 10, 10, { color: '#38e8b8', size: 5 });
-      drawPixelText(ctx, 'NO EXTERNAL .GB/.GBC LOADED', 10, 20, { color: '#f8f8f0', size: 4 });
-      drawPixelText(ctx, 'PRESS A TO PICK A ROM FILE!', 10, 30, { color: '#f8e838', size: 4 });
+      drawPixelText(ctx, 'GBC ROM CARTRIDGE SLOT', 10, 10, { color: '#38e8b8', size: 4.5 });
+      drawPixelText(ctx, 'BUILT-IN DMG HOMEBREW ACTIVE', 10, 20, { color: '#f8f8f0', size: 4 });
+      drawPixelText(ctx, 'A:LOAD .GB/.GBC  START:PALETTE', 10, 30, { color: '#f8e838', size: 4 });
     } else {
-      drawPixelText(ctx, `ROM: ${state.romInfo.title}`, 10, 10, { color: '#f8e838', size: 5 });
+      drawPixelText(ctx, `ROM: ${state.romInfo.title}`, 10, 10, { color: '#f8e838', size: 4.5 });
       drawPixelText(
         ctx,
-        `${state.romInfo.isGBC ? 'GBC COLOR' : 'DMG MONO'} | ${state.romInfo.romSizeKB}KB | ${state.romInfo.checksumHex}`,
+        `${state.romInfo.mbcName} | ${state.romInfo.romSizeKB}KB | ${state.romInfo.checksumHex}`,
         10,
         20,
         { color: '#38e8b8', size: 4 }
       );
-      drawPixelText(ctx, 'A:LOAD NEW ROM  B:BANK STEP', 10, 30, { color: '#c8d8d8', size: 4 });
+      drawPixelText(ctx, 'A:LOAD ROM  B:MODE  START:PAL', 10, 30, { color: '#c8d8d8', size: 4 });
     }
 
     // Center Interactive Homebrew / VRAM Sandbox Viewport
-    drawGBCBox(ctx, 6, 44, 148, 94, { bg: '#9bbc0f', borderOuter: '#306230', borderInner: '#0f380f' });
+    drawGBCBox(ctx, 6, 44, 148, 94, { bg: pal[0], borderOuter: pal[2], borderInner: pal[3] });
 
-    if (state.romInfo) {
-      const dmgPalette = ['#9bbc0f', '#8bac0f', '#306230', '#0f380f'];
+    if (state.viewMode === 'TILES' && state.romInfo) {
       const tiles = state.romInfo.tilePreviewColors;
       for (let idx = 0; idx < 24; idx++) {
         const tile = tiles[(idx + state.tileOffset) % tiles.length];
         if (!tile) continue;
         const tx = 14 + (idx % 8) * 16;
-        const ty = 52 + Math.floor(idx / 8) * 18;
+        const ty = 50 + Math.floor(idx / 8) * 18;
         for (let r = 0; r < 8; r++) {
           for (let c = 0; c < 8; c++) {
-            ctx.fillStyle = dmgPalette[tile[r * 8 + c]];
+            ctx.fillStyle = pal[tile[r * 8 + c]];
             ctx.fillRect(tx + c * 2, ty + r * 2, 2, 2);
           }
         }
       }
-      drawPixelText(ctx, '2BPP ROM TILE DECODER ACTIVE', 80, 124, { color: '#0f380f', size: 4, align: 'center' });
+      drawPixelText(
+        ctx,
+        `2BPP TILES +${state.tileOffset} (D-PAD:SCROLL B:PLAY)`,
+        80,
+        125,
+        { color: pal[3], size: 3.8, align: 'center' }
+      );
     } else {
-      // Built-in DMG Classic Demo Sprite controllable with D-Pad
-      drawPixelText(ctx, 'HOMEBREW DMG DEMO ACTIVE', 80, 52, { color: '#0f380f', size: 5, align: 'center' });
-      ctx.fillStyle = '#0f380f';
-      ctx.fillRect(Math.round(state.demoX), Math.round(state.demoY), 14, 14);
-      ctx.fillStyle = '#9bbc0f';
-      ctx.fillRect(Math.round(state.demoX + 3), Math.round(state.demoY + 4), 2, 2);
-      ctx.fillRect(Math.round(state.demoX + 9), Math.round(state.demoY + 4), 2, 2);
-      drawPixelText(ctx, 'MOVE SPRITE WITH D-PAD', 80, 114, { color: '#306230', size: 4, align: 'center' });
-      drawPixelText(ctx, 'PRESS A TO INSERT .GB/.GBC', 80, 124, { color: '#0f380f', size: 4, align: 'center' });
+      // Playable Homebrew / ROM Sprite Arena
+      const headerLabel = state.romInfo
+        ? `${state.romInfo.title} SANDBOX | PTS:${state.score}`
+        : `HOMEBREW DMG | PTS:${state.score}`;
+      drawPixelText(ctx, headerLabel, 80, 50, { color: pal[3], size: 4, align: 'center' });
+
+      // Collectible Star / Crystal
+      const pulse = Math.floor(state.time * 6) % 2 === 0;
+      ctx.fillStyle = pulse ? pal[3] : pal[2];
+      ctx.fillRect(state.starX + 3, state.starY, 4, 10);
+      ctx.fillRect(state.starX, state.starY + 3, 10, 4);
+
+      // Player Sprite (uses decoded ROM tile #0 if a ROM is loaded, else classic DMG hero)
+      const px = Math.round(state.demoX);
+      const py = Math.round(state.demoY);
+      const customTile = state.romInfo?.tilePreviewColors[0];
+      if (customTile) {
+        for (let r = 0; r < 8; r++) {
+          for (let c = 0; c < 8; c++) {
+            const v = customTile[r * 8 + c];
+            if (v === 0) continue;
+            ctx.fillStyle = pal[v];
+            ctx.fillRect(px + c * 2, py + r * 2, 2, 2);
+          }
+        }
+      } else {
+        ctx.fillStyle = pal[3];
+        ctx.fillRect(px, py, 14, 14);
+        ctx.fillStyle = pal[0];
+        ctx.fillRect(px + 3, py + 4, 2, 2);
+        ctx.fillRect(px + 9, py + 4, 2, 2);
+        ctx.fillRect(px + 4, py + 9, 6, 2);
+      }
+
+      drawPixelText(ctx, 'D-PAD:MOVE  B:VRAM INSPECTOR', 80, 116, { color: pal[2], size: 4, align: 'center' });
+      drawPixelText(ctx, `PAL:${GBC_HARDWARE_PALETTES[state.paletteIdx].name} (START)`, 80, 125, {
+        color: pal[3],
+        size: 4,
+        align: 'center',
+      });
     }
   },
 };
