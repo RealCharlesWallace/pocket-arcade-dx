@@ -129,7 +129,7 @@ export class GBCSystemOS {
       if (input.justPressed.up && this.pauseCursor > 0) {
         this.pauseCursor--;
         this.context.audio.playMenuMove();
-      } else if (input.justPressed.down && this.pauseCursor < 2) {
+      } else if (input.justPressed.down && this.pauseCursor < 3) {
         this.pauseCursor++;
         this.context.audio.playMenuMove();
       } else if (input.justPressed.a || input.justPressed.start) {
@@ -141,6 +141,9 @@ export class GBCSystemOS {
           this.phase = 'PLAYING';
         } else if (this.pauseCursor === 2) {
           this.returnToCarousel();
+        } else if (this.pauseCursor === 3) {
+          this.phase = 'PLAYING';
+          this.context.openRomFilePicker();
         }
       }
       return;
@@ -322,20 +325,20 @@ export class GBCSystemOS {
   }
 
   private renderPauseOverlay(ctx: CanvasRenderingContext2D): void {
-    ctx.fillStyle = 'rgba(10, 14, 18, 0.75)';
+    ctx.fillStyle = 'rgba(10, 14, 18, 0.78)';
     ctx.fillRect(0, 0, GBC_WIDTH, GBC_HEIGHT);
 
-    drawGBCBox(ctx, 24, 34, 112, 76, { bg: '#18202c', borderOuter: '#f8e048' });
-    drawPixelText(ctx, 'SYSTEM PAUSED', 80, 42, { color: '#f8e048', size: 6, align: 'center' });
+    drawGBCBox(ctx, 18, 26, 124, 92, { bg: '#18202c', borderOuter: '#f8e048' });
+    drawPixelText(ctx, 'SYSTEM PAUSED', 80, 34, { color: '#f8e048', size: 6, align: 'center' });
 
-    const items = ['RESUME GAME', 'RESTART CART', 'CHANGE GAME PAK'];
+    const items = ['RESUME GAME', 'RESTART CART', 'CHANGE GAME PAK', 'LOAD .GB/.GBC ROM'];
     items.forEach((label, idx) => {
-      const y = 60 + idx * 14;
+      const y = 52 + idx * 14;
       const sel = idx === this.pauseCursor;
       if (sel) {
-        drawPixelText(ctx, '>', 32, y, { color: '#58f888', size: 5 });
+        drawPixelText(ctx, '>', 26, y, { color: '#58f888', size: 5 });
       }
-      drawPixelText(ctx, label, 42, y, { color: sel ? '#ffffff' : '#98a8b8', size: 5 });
+      drawPixelText(ctx, label, 36, y, { color: sel ? '#ffffff' : '#98a8b8', size: 4.8 });
     });
   }
 }

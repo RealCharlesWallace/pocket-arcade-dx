@@ -1,3 +1,4 @@
+import { GBHardwareEmulator, parseRomHeader } from '../../core/gb-emulator';
 import {
   drawGBCBox,
   drawPixelText,
@@ -11,6 +12,7 @@ interface RomHeaderInfo {
   mbcName: string;
   romSizeKB: number;
   checksumHex: string;
+  isExecutable: boolean;
   tilePreviewColors: number[][];
 }
 
@@ -21,23 +23,12 @@ const GBC_HARDWARE_PALETTES: Array<{ name: string; colors: [string, string, stri
   { name: 'GBC CYBER', colors: ['#f0d8ff', '#e848b8', '#582098', '#140824'] },
 ];
 
-const MBC_NAMES: Record<number, string> = {
-  0x00: 'ROM ONLY',
-  0x01: 'MBC1',
-  0x02: 'MBC1+RAM',
-  0x03: 'MBC1+BAT',
-  0x05: 'MBC2',
-  0x06: 'MBC2+BAT',
-  0x11: 'MBC3',
-  0x13: 'MBC3+BAT',
-  0x19: 'MBC5',
-  0x1b: 'MBC5+BAT',
-};
+const hwEmulator = new GBHardwareEmulator();
 
 const state = {
   ctx: null as unknown as GameContext,
   romInfo: null as RomHeaderInfo | null,
-  viewMode: 'PLAY' as 'PLAY' | 'TILES',
+  viewMode: 'PLAY' as 'EMU' | 'PLAY' | 'TILES',
   paletteIdx: 0,
   demoX: 72,
   demoY: 78,
@@ -52,9 +43,9 @@ const state = {
 export const romLoaderCartridge: GameCartridge = {
   id: 'rom-loader',
   title: 'CUSTOM ROM SLOT',
-  subtitle: '.GB / .GBC LOADER',
+  subtitle: '.GB / .GBC EMULATOR',
   genre: 'EMULATOR',
-  description: 'Load any .gb or .gbc ROM file to inspect its GBC header, VRAM tiles, and run it in the slot!',
+  description: 'Run any .gb or .gbc ROM on the LR35902 hardware core, or inspect its header & VRAM tiles!',
   cartridgeColor: '#485058',
   labelColor: '#182428',
   accentColor: '#38e8b8',
@@ -80,26 +71,19 @@ export const romLoaderCartridge: GameCartridge = {
     state.score = 0;
     state.demoX = 72;
     state.demoY = 78;
-    context.audio.startBGM('menu');
+    if (hwEmulator.isRunningHardware()) {
+      state.viewMode = 'EMU';
+      context.audio.stopBGM();
+    } else {
+      context.audio.startBGM('menu');
+    }
   },
 
   onRomLoaded(fileName: string, bytes: Uint8Array) {
     state.rawBytes = bytes;
-    // Parse standard Nintendo Game Boy / GBC header (0x0134 - 0x014F)
-    let title = '';
-    for (let i = 0x0134; i <= 0x0142 && i < bytes.length; i++) {
-      const code = bytes[i];
-      if (code === 0) break;
-      if (code >= 32 && code <= 126) title += String.fromCharCode(code);
-    }
-    if (!title.trim()) title = fileName.slice(0, 12).toUpperCase();
-
-    const cgbFlag = bytes[0x0143] ?? 0;
-    const isGBC = cgbFlag === 0x80 || cgbFlag === 0xc0 || fileName.toLowerCase().endsWith('.gbc');
-    const mbcCode = bytes[0x0147] ?? 0;
-    const mbcName = MBC_NAMES[mbcCode] ?? `MBC(0x${mbcCode.toString(16).toUpperCase()})`;
-    const romSizeKB = Math.max(32, Math.round(bytes.length / 1024));
-    const checksum = ((bytes[0x014e] ?? 0) << 8) | (bytes[0x014f] ?? 0);
+    const savedSram = state.ctx?.storage.loadData<number[] | null>('rom-loader-sram', null);
+    const meta = hwEmulator.loadRom(fileName, bytes, savedSram);
+    const header = parseRomHeader(fileName, bytes);
 
     // Decode up to 256 non-empty 2BPP Game Boy tiles from the ROM
     const tiles: number[][] = [];
@@ -123,21 +107,32 @@ export const romLoaderCartridge: GameCartridge = {
     }
 
     state.romInfo = {
-      fileName,
-      title: title.trim(),
-      isGBC,
-      mbcName,
-      romSizeKB,
-      checksumHex: '0x' + checksum.toString(16).toUpperCase().padStart(4, '0'),
+      fileName: header.fileName,
+      title: header.title,
+      isGBC: header.isGBC,
+      mbcName: header.mbcName,
+      romSizeKB: header.romSizeKB,
+      checksumHex: header.checksumHex,
+      isExecutable: meta.isExecutable,
       tilePreviewColors: tiles,
     };
     state.tileOffset = 0;
-    state.viewMode = 'TILES';
-    if (isGBC) state.paletteIdx = 1;
+    if (meta.isExecutable && hwEmulator.isRunningHardware()) {
+      state.viewMode = 'EMU';
+      state.ctx?.audio.stopBGM();
+    } else {
+      state.viewMode = 'TILES';
+      if (header.isGBC) state.paletteIdx = 1;
+    }
   },
 
   update(dt: number, input: InputState) {
     state.time += dt;
+
+    if (state.viewMode === 'EMU' && hwEmulator.isRunningHardware()) {
+      hwEmulator.step(dt, input);
+      return;
+    }
 
     if (input.justPressed.a) {
       state.ctx.audio.playMenuSelect();
@@ -146,7 +141,11 @@ export const romLoaderCartridge: GameCartridge = {
     }
 
     if (input.justPressed.b) {
-      state.viewMode = state.viewMode === 'PLAY' ? 'TILES' : 'PLAY';
+      if (hwEmulator.isRunningHardware()) {
+        state.viewMode = state.viewMode === 'TILES' ? 'EMU' : 'TILES';
+      } else {
+        state.viewMode = state.viewMode === 'PLAY' ? 'TILES' : 'PLAY';
+      }
       state.ctx.audio.playMenuMove();
       return;
     }
@@ -185,6 +184,12 @@ export const romLoaderCartridge: GameCartridge = {
   },
 
   render(ctx: CanvasRenderingContext2D) {
+    if (state.viewMode === 'EMU' && hwEmulator.isRunningHardware()) {
+      if (hwEmulator.renderToCanvas(ctx)) {
+        return;
+      }
+    }
+
     const pal = GBC_HARDWARE_PALETTES[state.paletteIdx].colors;
 
     ctx.fillStyle = '#101818';
@@ -192,8 +197,8 @@ export const romLoaderCartridge: GameCartridge = {
 
     drawGBCBox(ctx, 4, 4, 152, 36, { bg: '#182428', borderOuter: '#38e8b8' });
     if (!state.romInfo) {
-      drawPixelText(ctx, 'GBC ROM CARTRIDGE SLOT', 10, 10, { color: '#38e8b8', size: 4.5 });
-      drawPixelText(ctx, 'BUILT-IN DMG HOMEBREW ACTIVE', 10, 20, { color: '#f8f8f0', size: 4 });
+      drawPixelText(ctx, 'LR35902 GBC EMULATOR SLOT', 10, 10, { color: '#38e8b8', size: 4.5 });
+      drawPixelText(ctx, 'READY FOR .GB / .GBC ROMS', 10, 20, { color: '#f8f8f0', size: 4 });
       drawPixelText(ctx, 'A:LOAD .GB/.GBC  START:PALETTE', 10, 30, { color: '#f8e838', size: 4 });
     } else {
       drawPixelText(ctx, `ROM: ${state.romInfo.title}`, 10, 10, { color: '#f8e838', size: 4.5 });
@@ -232,19 +237,16 @@ export const romLoaderCartridge: GameCartridge = {
         { color: pal[3], size: 3.8, align: 'center' }
       );
     } else {
-      // Playable Homebrew / ROM Sprite Arena
       const headerLabel = state.romInfo
         ? `${state.romInfo.title} SANDBOX | PTS:${state.score}`
         : `HOMEBREW DMG | PTS:${state.score}`;
       drawPixelText(ctx, headerLabel, 80, 50, { color: pal[3], size: 4, align: 'center' });
 
-      // Collectible Star / Crystal
       const pulse = Math.floor(state.time * 6) % 2 === 0;
       ctx.fillStyle = pulse ? pal[3] : pal[2];
       ctx.fillRect(state.starX + 3, state.starY, 4, 10);
       ctx.fillRect(state.starX, state.starY + 3, 10, 4);
 
-      // Player Sprite (uses decoded ROM tile #0 if a ROM is loaded, else classic DMG hero)
       const px = Math.round(state.demoX);
       const py = Math.round(state.demoY);
       const customTile = state.romInfo?.tilePreviewColors[0];
@@ -272,6 +274,15 @@ export const romLoaderCartridge: GameCartridge = {
         size: 4,
         align: 'center',
       });
+    }
+  },
+
+  cleanup() {
+    if (state.ctx && hwEmulator.isRunningHardware()) {
+      const sram = hwEmulator.extractSram();
+      if (sram.length > 0) {
+        state.ctx.storage.saveData<number[]>('rom-loader-sram', sram);
+      }
     }
   },
 };

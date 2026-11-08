@@ -4,6 +4,7 @@ import { InputManager } from './core/input';
 import { GBC_HEIGHT, GBC_SCALE, GBC_WIDTH } from './core/pixel-renderer';
 import { ACHIEVEMENTS, CartridgeStorage, formatDuration } from './core/storage';
 import { CARTRIDGE_REGISTRY } from './games/registry';
+import { pokemonBlueCartridge, pokemonRedCartridge } from './games/pocket-monsters';
 import { romLoaderCartridge } from './games/rom-loader';
 import { GBCSystemOS } from './games/system-os';
 import { SHELL_THEMES } from './stage/gbc-model';
@@ -505,17 +506,27 @@ function bootstrap(): void {
     renderMempakAndCloudTab();
   });
 
-  // Custom .gb / .gbc ROM file input handler
+  // Custom .gb / .gbc ROM file input handler (routes Red/Blue ROMs to their dedicated cartridges)
   romFileInput.addEventListener('change', async () => {
     const file = romFileInput.files?.[0];
     if (!file) return;
     const buffer = await file.arrayBuffer();
     const bytes = new Uint8Array(buffer);
-    romLoaderCartridge.onRomLoaded?.(file.name, bytes);
-    romFilenameStatus.textContent = `Loaded: ${file.name} (${Math.round(bytes.length / 1024)} KB)`;
+    const currentCart = systemOS.getSelectedCartridge();
+    const lowerName = file.name.toLowerCase();
+
+    let targetCart = romLoaderCartridge;
+    if (currentCart.id === 'pokemon-red' || lowerName.includes('red')) {
+      targetCart = pokemonRedCartridge;
+    } else if (currentCart.id === 'pokemon-blue' || lowerName.includes('blue')) {
+      targetCart = pokemonBlueCartridge;
+    }
+
+    targetCart.onRomLoaded?.(file.name, bytes);
+    romFilenameStatus.textContent = `Loaded: ${file.name} (${Math.round(bytes.length / 1024)} KB) -> ${targetCart.title}`;
     if (cartDialog.open) cartDialog.close();
     powerOnConsole();
-    systemOS.launchCartridgeById('rom-loader');
+    systemOS.launchCartridgeById(targetCart.id);
   });
 
   // Initialize cartridge colors for initial selection

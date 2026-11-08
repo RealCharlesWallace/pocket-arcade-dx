@@ -1,3 +1,4 @@
+import { GBHardwareEmulator } from '../../core/gb-emulator';
 import {
   drawGBCBox,
   drawHealthBar,
@@ -7,6 +8,7 @@ import {
 import type { GameCartridge, GameContext, InputState } from '../../core/types';
 
 type ElementType = 'FIRE' | 'WATER' | 'GRASS' | 'VOLT' | 'EARTH';
+type VersionId = 'RED' | 'BLUE';
 
 interface MoveDef {
   name: string;
@@ -22,6 +24,8 @@ interface MonsterSpecies {
   baseAtk: number;
   color1: string;
   color2: string;
+  evolvesTo?: string;
+  evolveLv?: number;
   sprite: string[];
   moves: MoveDef[];
 }
@@ -34,99 +38,159 @@ interface PartyMonster {
   xp: number;
 }
 
-const SPECIES: MonsterSpecies[] = [
+const KANTO_SPECIES: MonsterSpecies[] = [
   {
-    id: 'pyrokit',
-    name: 'PYROKIT',
+    id: 'charmander',
+    name: 'CHARMANDER',
     type: 'FIRE',
-    baseHp: 32,
-    baseAtk: 11,
-    color1: '#f85828',
+    baseHp: 34,
+    baseAtk: 12,
+    color1: '#f05028',
     color2: '#f8d030',
-    sprite: [
-      '..11....11..',
-      '.1221..1221.',
-      '.1221111221.',
-      '.1111111111.',
-      '113111111311',
-      '111112211111',
-      '.1111111111.',
-      '..11222211..',
-      '.1112222111.',
-      '.11.1111.11.',
-      '....11.11...',
-      '...11...11..',
-    ],
-    moves: [
-      { name: 'FLAME CLAW', type: 'FIRE', power: 13 },
-      { name: 'EMBER BURST', type: 'FIRE', power: 16 },
-      { name: 'QUICK SCRATCH', type: 'EARTH', power: 10 },
-    ],
-  },
-  {
-    id: 'aquafin',
-    name: 'AQUAFIN',
-    type: 'WATER',
-    baseHp: 35,
-    baseAtk: 10,
-    color1: '#2888f8',
-    color2: '#88d8f8',
+    evolvesTo: 'charizard',
+    evolveLv: 8,
     sprite: [
       '....1111....',
-      '..11222211..',
-      '.1222222221.',
-      '.1131221311.',
-      '111112211111',
-      '122111111221',
-      '.1112222111.',
-      '..11222211..',
+      '...111111...',
+      '..11311311..',
       '..11111111..',
-      '.1221..1221.',
-      '.111....111.',
+      '...112211...',
+      '..11122111.2',
+      '.11.1221.122',
+      '....1221.22.',
+      '...11..111..',
+      '..11....11..',
+      '............',
       '............',
     ],
     moves: [
-      { name: 'AQUA JET', type: 'WATER', power: 13 },
-      { name: 'TIDAL SPLASH', type: 'WATER', power: 16 },
-      { name: 'SHELL BASH', type: 'EARTH', power: 10 },
+      { name: 'EMBER', type: 'FIRE', power: 13 },
+      { name: 'FLAMETHROWER', type: 'FIRE', power: 17 },
+      { name: 'SLASH', type: 'EARTH', power: 12 },
     ],
   },
   {
-    id: 'leafbud',
-    name: 'LEAFBUD',
-    type: 'GRASS',
-    baseHp: 36,
-    baseAtk: 10,
-    color1: '#38b848',
-    color2: '#a8f060',
+    id: 'charizard',
+    name: 'CHARIZARD',
+    type: 'FIRE',
+    baseHp: 46,
+    baseAtk: 15,
+    color1: '#e84820',
+    color2: '#f8c828',
     sprite: [
-      '....2222....',
-      '..22211222..',
-      '...211112...',
+      '.11..1111..1',
+      '122111111122',
+      '122113113122',
+      '.1111111111.',
+      '..111222211.',
+      '.11122222212',
+      '11.112222122',
+      '...11222211.',
+      '..111....111',
+      '.111......11',
+      '............',
+      '............',
+    ],
+    moves: [
+      { name: 'FIRE BLAST', type: 'FIRE', power: 19 },
+      { name: 'FLAMETHROWER', type: 'FIRE', power: 16 },
+      { name: 'WING ATTACK', type: 'EARTH', power: 13 },
+    ],
+  },
+  {
+    id: 'squirtle',
+    name: 'SQUIRTLE',
+    type: 'WATER',
+    baseHp: 36,
+    baseAtk: 11,
+    color1: '#2888f8',
+    color2: '#d89848',
+    evolvesTo: 'blastoise',
+    evolveLv: 8,
+    sprite: [
+      '....1111....',
       '..11111111..',
       '.1131111311.',
-      '.1111221111.',
-      '111111111111',
-      '112211112211',
       '.1111111111.',
+      '..11222211..',
+      '.11222222111',
+      '11.222222.11',
+      '...122221...',
       '..111..111..',
       '..11....11..',
+      '............',
+      '............',
+    ],
+    moves: [
+      { name: 'BUBBLE', type: 'WATER', power: 13 },
+      { name: 'WATER GUN', type: 'WATER', power: 16 },
+      { name: 'SKULL BASH', type: 'EARTH', power: 12 },
+    ],
+  },
+  {
+    id: 'blastoise',
+    name: 'BLASTOISE',
+    type: 'WATER',
+    baseHp: 48,
+    baseAtk: 14,
+    color1: '#1868d8',
+    color2: '#b87838',
+    sprite: [
+      '.22.1111.22.',
+      '.2211111122.',
+      '..11311311..',
+      '.1111111111.',
+      '112222222211',
+      '112222222211',
+      '.1222222221.',
+      '..11222211..',
+      '.1111..1111.',
+      '.111....111.',
+      '............',
+      '............',
+    ],
+    moves: [
+      { name: 'HYDRO PUMP', type: 'WATER', power: 19 },
+      { name: 'SURF', type: 'WATER', power: 16 },
+      { name: 'BITE', type: 'EARTH', power: 13 },
+    ],
+  },
+  {
+    id: 'bulbasaur',
+    name: 'BULBASAUR',
+    type: 'GRASS',
+    baseHp: 37,
+    baseAtk: 11,
+    color1: '#38b858',
+    color2: '#208038',
+    sprite: [
+      '....2222....',
+      '..22222222..',
+      '.2221111222.',
+      '.1111111111.',
+      '113111111311',
+      '111111111111',
+      '.1111111111.',
+      '.111....111.',
+      '.11......11.',
+      '............',
+      '............',
       '............',
     ],
     moves: [
       { name: 'VINE WHIP', type: 'GRASS', power: 13 },
-      { name: 'SOLAR LEAF', type: 'GRASS', power: 16 },
-      { name: 'BODY TACKLE', type: 'EARTH', power: 10 },
+      { name: 'RAZOR LEAF', type: 'GRASS', power: 16 },
+      { name: 'BODY SLAM', type: 'EARTH', power: 12 },
     ],
   },
   {
-    id: 'voltmouse',
-    name: 'VOLTMOUSE',
+    id: 'pikachu',
+    name: 'PIKACHU',
     type: 'VOLT',
-    baseHp: 30,
-    baseAtk: 12,
+    baseHp: 32,
+    baseAtk: 13,
     color1: '#f8d020',
-    color2: '#e85020',
+    color2: '#e84020',
     sprite: [
       '.11......11.',
       '.111....111.',
@@ -138,182 +202,201 @@ const SPECIES: MonsterSpecies[] = [
       '.1111111122.',
       '.111111111..',
       '..11....11..',
-      '..11....11..',
+      '............',
       '............',
     ],
     moves: [
-      { name: 'THUNDER ZAP', type: 'VOLT', power: 14 },
-      { name: 'VOLT DASH', type: 'VOLT', power: 16 },
-      { name: 'IRON TAIL', type: 'EARTH', power: 11 },
+      { name: 'THUNDERBOLT', type: 'VOLT', power: 16 },
+      { name: 'THUNDER', type: 'VOLT', power: 18 },
+      { name: 'QUICK ATTACK', type: 'EARTH', power: 11 },
     ],
   },
   {
-    id: 'rockgolem',
-    name: 'CRAGREX',
-    type: 'EARTH',
-    baseHp: 40,
-    baseAtk: 11,
-    color1: '#a88050',
-    color2: '#d8b888',
+    id: 'growlithe',
+    name: 'GROWLITHE',
+    type: 'FIRE',
+    baseHp: 35,
+    baseAtk: 13,
+    color1: '#f06028',
+    color2: '#f8e090',
     sprite: [
-      '...111111...',
-      '..12211221..',
+      '..221111....',
+      '.22111111...',
+      '.11311131...',
+      '..11111122..',
+      '..122112221.',
       '.1111111111.',
-      '111311113111',
-      '111111111111',
-      '122112211221',
-      '111111111111',
-      '.1112222111.',
-      '.1111111111.',
-      '.111....111.',
-      '111......111',
+      '.1122112211.',
+      '..11....11..',
+      '.11......11.',
+      '............',
+      '............',
       '............',
     ],
     moves: [
-      { name: 'BOULDER SLAM', type: 'EARTH', power: 14 },
-      { name: 'QUAKE TREMOR', type: 'EARTH', power: 17 },
-      { name: 'FLINT SPARK', type: 'FIRE', power: 11 },
+      { name: 'FLAME WHEEL', type: 'FIRE', power: 15 },
+      { name: 'EMBER', type: 'FIRE', power: 13 },
+      { name: 'TAKE DOWN', type: 'EARTH', power: 12 },
+    ],
+  },
+  {
+    id: 'vulpix',
+    name: 'VULPIX',
+    type: 'FIRE',
+    baseHp: 34,
+    baseAtk: 12,
+    color1: '#e05830',
+    color2: '#f8b858',
+    sprite: [
+      '..222..222..',
+      '.1122112211.',
+      '.1131111311.',
+      '..11111111..',
+      '..1111111222',
+      '.11111112222',
+      '..111..1122.',
+      '..11....11..',
+      '............',
+      '............',
+      '............',
+      '............',
+    ],
+    moves: [
+      { name: 'FLAMETHROWER', type: 'FIRE', power: 16 },
+      { name: 'FIRE SPIN', type: 'FIRE', power: 13 },
+      { name: 'QUICK ATTACK', type: 'EARTH', power: 11 },
+    ],
+  },
+  {
+    id: 'onix',
+    name: 'ONIX',
+    type: 'EARTH',
+    baseHp: 42,
+    baseAtk: 12,
+    color1: '#908880',
+    color2: '#c8c0b8',
+    sprite: [
+      '....11......',
+      '..112211....',
+      '.11311311...',
+      '.11111111...',
+      '...112211...',
+      '....112211..',
+      '..11221111..',
+      '.112211.....',
+      '..1111111...',
+      '....111221..',
+      '............',
+      '............',
+    ],
+    moves: [
+      { name: 'ROCK THROW', type: 'EARTH', power: 15 },
+      { name: 'EARTHQUAKE', type: 'EARTH', power: 18 },
+      { name: 'BIND', type: 'EARTH', power: 11 },
+    ],
+  },
+  {
+    id: 'starmie',
+    name: 'STARMIE',
+    type: 'WATER',
+    baseHp: 38,
+    baseAtk: 14,
+    color1: '#8858d8',
+    color2: '#f8d038',
+    sprite: [
+      '.....11.....',
+      '....1111....',
+      '.1111221111.',
+      '..11233211..',
+      '...123321...',
+      '..11222211..',
+      '.1111111111.',
+      '.11..11..11.',
+      '............',
+      '............',
+      '............',
+      '............',
+    ],
+    moves: [
+      { name: 'BUBBLEBEAM', type: 'WATER', power: 16 },
+      { name: 'HYDRO PUMP', type: 'WATER', power: 18 },
+      { name: 'THUNDERBOLT', type: 'VOLT', power: 14 },
+    ],
+  },
+  {
+    id: 'mewtwo',
+    name: 'MEWTWO',
+    type: 'VOLT',
+    baseHp: 50,
+    baseAtk: 16,
+    color1: '#c8a8e8',
+    color2: '#8848b8',
+    sprite: [
+      '..11....11..',
+      '..11111111..',
+      '..13111131..',
+      '...111111...',
+      '..11122111..',
+      '.11.1221.112',
+      '....1221..22',
+      '...11221122.',
+      '..11....11..',
+      '.11......11.',
+      '............',
+      '............',
+    ],
+    moves: [
+      { name: 'PSYCHIC', type: 'VOLT', power: 19 },
+      { name: 'THUNDERBOLT', type: 'VOLT', power: 16 },
+      { name: 'SWIFT', type: 'EARTH', power: 13 },
     ],
   },
 ];
 
 function getTypeMultiplier(atk: ElementType, def: ElementType): number {
-  if (atk === 'FIRE' && def === 'GRASS') return 1.6;
-  if (atk === 'FIRE' && def === 'WATER') return 0.65;
-  if (atk === 'WATER' && (def === 'FIRE' || def === 'EARTH')) return 1.6;
+  if (atk === 'FIRE' && def === 'GRASS') return 1.65;
+  if (atk === 'FIRE' && (def === 'WATER' || def === 'EARTH')) return 0.65;
+  if (atk === 'WATER' && (def === 'FIRE' || def === 'EARTH')) return 1.65;
   if (atk === 'WATER' && def === 'GRASS') return 0.65;
-  if (atk === 'GRASS' && (def === 'WATER' || def === 'EARTH')) return 1.6;
+  if (atk === 'GRASS' && (def === 'WATER' || def === 'EARTH')) return 1.65;
   if (atk === 'GRASS' && def === 'FIRE') return 0.65;
-  if (atk === 'VOLT' && def === 'WATER') return 1.6;
-  if (atk === 'VOLT' && def === 'EARTH') return 0.65;
-  if (atk === 'EARTH' && (def === 'VOLT' || def === 'FIRE')) return 1.6;
+  if (atk === 'VOLT' && def === 'WATER') return 1.65;
+  if (atk === 'VOLT' && def === 'EARTH') return 0.6;
+  if (atk === 'EARTH' && (def === 'VOLT' || def === 'FIRE')) return 1.65;
   return 1.0;
 }
 
-// 10x9 Overworld Tile Map (16x16 tiles = 160x144 screen)
-// T = tree, . = path, G = tall grass, W = water, H = healer roof, D = healer door, N = rival NPC
+// 10x9 Kanto Overworld Tile Map (16x16 tiles = 160x144 screen)
+// T = tree, . = road, G = Route 1 tall grass, W = water, H = PokeCenter roof,
+// D = PokeCenter Heal Door, O = Prof. Oak Starter Table, N = Gym Leader (Brock / Misty)
 const MAP_ROWS = [
   'TTTTTGGTTT',
   'THHHTGG..T',
   'T.D.TGGG.T',
   'T... ....T',
-  'T..N..GGGT',
+  'T.O..N.GGT',
   'T....GGGGT',
   'TWW...GGGT',
   'TWW....o.T',
   'TTTTTTTTTT',
 ];
 
-type Mode = 'OVERWORLD' | 'ENCOUNTER_FLASH' | 'BATTLE' | 'DIALOG';
+type Mode = 'TITLE' | 'OVERWORLD' | 'STARTER_SELECT' | 'ENCOUNTER_FLASH' | 'BATTLE' | 'DIALOG' | 'EMU_ROM';
 
 interface SaveProgress {
   party: PartyMonster[];
   balls: number;
   potions: number;
   wins: number;
+  badges: number;
 }
 
-export const pocketMonstersCartridge: GameCartridge = {
-  id: 'pocket-monsters',
-  title: 'POCKET MONSTERS',
-  subtitle: 'CRYSTAL QUEST DX',
-  genre: 'RPG',
-  description: 'Explore tall grass, battle & catch elemental monsters, and build your team!',
-  cartridgeColor: '#2468c8',
-  labelColor: '#1b2848',
-  accentColor: '#48d8f8',
-
-  renderPreviewIcon(ctx, x, y, w, h, time) {
-    ctx.fillStyle = '#182438';
-    ctx.fillRect(x, y, w, h);
-
-    // Classic Pokéball icon + bouncing monster
-    const cx = x + Math.floor(w / 2);
-    const cy = y + Math.floor(h / 2) + Math.round(Math.sin(time * 4) * 2);
-
-    ctx.fillStyle = '#e83838';
-    ctx.fillRect(cx - 10, cy - 10, 20, 10);
-    ctx.fillStyle = '#f8f8f0';
-    ctx.fillRect(cx - 10, cy, 20, 10);
-    ctx.fillStyle = '#181818';
-    ctx.fillRect(cx - 10, cy - 1, 20, 2);
-    ctx.fillStyle = '#f8d838';
-    ctx.fillRect(cx - 3, cy - 3, 6, 6);
-  },
-
-  init(context: GameContext) {
-    state.ctx = context;
-    const saved = context.storage.loadData<SaveProgress | null>('pocket-monsters', null);
-    if (saved && saved.party?.length > 0) {
-      state.party = saved.party;
-      state.balls = saved.balls ?? 5;
-      state.potions = saved.potions ?? 3;
-      state.wins = saved.wins ?? 0;
-    } else {
-      state.party = [
-        createPartyMonster('pyrokit', 5),
-        createPartyMonster('voltmouse', 4),
-      ];
-      state.balls = 6;
-      state.potions = 3;
-      state.wins = 0;
-    }
-
-    state.playerX = 3;
-    state.playerY = 3;
-    state.mode = 'OVERWORLD';
-    state.dialogText = '';
-    context.audio.startBGM('monster_town');
-  },
-
-  update(dt: number, input: InputState) {
-    state.animTime += dt;
-    if (state.moveCooldown > 0) state.moveCooldown -= dt;
-
-    if (state.mode === 'OVERWORLD') {
-      updateOverworld(input);
-    } else if (state.mode === 'DIALOG') {
-      if (input.justPressed.a || input.justPressed.b || input.justPressed.start) {
-        state.ctx.audio.playMenuSelect();
-        state.mode = 'OVERWORLD';
-      }
-    } else if (state.mode === 'ENCOUNTER_FLASH') {
-      state.flashTimer -= dt;
-      if (state.flashTimer <= 0) {
-        state.mode = 'BATTLE';
-      }
-    } else if (state.mode === 'BATTLE') {
-      updateBattle(dt, input);
-    }
-  },
-
-  render(ctx: CanvasRenderingContext2D) {
-    if (state.mode === 'OVERWORLD' || state.mode === 'DIALOG' || state.mode === 'ENCOUNTER_FLASH') {
-      renderOverworld(ctx);
-      if (state.mode === 'DIALOG') {
-        drawGBCBox(ctx, 4, 102, 152, 38);
-        drawPixelText(ctx, state.dialogLine1, 10, 109, { color: '#182018', size: 6 });
-        drawPixelText(ctx, state.dialogLine2, 10, 121, { color: '#384838', size: 5 });
-      }
-      if (state.mode === 'ENCOUNTER_FLASH') {
-        const flashOn = Math.floor(state.flashTimer * 14) % 2 === 0;
-        if (flashOn) {
-          ctx.fillStyle = '#f8f8f0';
-          ctx.fillRect(0, 0, 160, 144);
-        }
-      }
-    } else if (state.mode === 'BATTLE') {
-      renderBattle(ctx);
-    }
-  },
-
-  cleanup() {
-    saveProgress();
-  },
-};
+function getSpecies(id: string): MonsterSpecies {
+  return KANTO_SPECIES.find((s) => s.id === id) ?? KANTO_SPECIES[0];
+}
 
 function createPartyMonster(speciesId: string, level: number): PartyMonster {
-  const sp = SPECIES.find((s) => s.id === speciesId) ?? SPECIES[0];
+  const sp = getSpecies(speciesId);
   const maxHp = sp.baseHp + level * 4;
   return {
     speciesId: sp.id,
@@ -324,446 +407,1000 @@ function createPartyMonster(speciesId: string, level: number): PartyMonster {
   };
 }
 
-function getSpecies(id: string): MonsterSpecies {
-  return SPECIES.find((s) => s.id === id) ?? SPECIES[0];
-}
+export function createPokemonVersionCartridge(version: VersionId): GameCartridge {
+  const isRed = version === 'RED';
+  const cartId = isRed ? 'pokemon-red' : 'pokemon-blue';
+  const mascotId = isRed ? 'charizard' : 'blastoise';
+  const defaultStarterId = isRed ? 'charmander' : 'squirtle';
+  const gymLeaderName = isRed ? 'GYM BROCK' : 'GYM MISTY';
+  const gymBossId = isRed ? 'onix' : 'starmie';
+  const badgeName = isRed ? 'BOULDERBADGE' : 'CASCADEBADGE';
+  const primaryHex = isRed ? '#d82828' : '#1e58d8';
+  const accentHex = isRed ? '#ff7838' : '#48b8ff';
 
-const state = {
-  ctx: null as unknown as GameContext,
-  animTime: 0,
-  mode: 'OVERWORLD' as Mode,
-  playerX: 3,
-  playerY: 3,
-  facing: 'down' as 'up' | 'down' | 'left' | 'right',
-  moveCooldown: 0,
-  party: [] as PartyMonster[],
-  activePartyIdx: 0,
-  balls: 6,
-  potions: 3,
-  wins: 0,
-  dialogText: '',
-  dialogLine1: '',
-  dialogLine2: '',
-  flashTimer: 0,
+  const wildPool = isRed
+    ? ['charmander', 'pikachu', 'growlithe', 'bulbasaur', 'onix', 'mewtwo']
+    : ['squirtle', 'pikachu', 'vulpix', 'bulbasaur', 'starmie', 'mewtwo'];
 
-  // Battle state
-  enemy: null as PartyMonster | null,
-  isWild: true,
-  battlePhase: 'MENU' as 'MENU' | 'MOVES' | 'PARTY' | 'MSG' | 'CATCH_ANIM',
-  menuCursor: 0, // 0: FIGHT, 1: PKMN, 2: BAG, 3: RUN
-  moveCursor: 0,
-  partyCursor: 0,
-  battleMsg1: '',
-  battleMsg2: '',
-  afterMsgAction: null as (() => void) | null,
-  catchShakeTimer: 0,
-};
+  const hwEmulator = new GBHardwareEmulator();
 
-function saveProgress(): void {
-  if (!state.ctx) return;
-  state.ctx.storage.saveData<SaveProgress>('pocket-monsters', {
-    party: state.party,
-    balls: state.balls,
-    potions: state.potions,
-    wins: state.wins,
-  });
-  state.ctx.storage.setHighScore('pocket-monsters', state.wins * 100 + state.party.length * 50);
-}
+  const state = {
+    ctx: null as unknown as GameContext,
+    animTime: 0,
+    mode: 'TITLE' as Mode,
+    titleCursor: 0, // 0: PLAY KANTO, 1: GYM LEADER, 2: LOAD .GB ROM
+    starterCursor: isRed ? 0 : 1, // 0: CHARMANDER, 1: SQUIRTLE, 2: BULBASAUR
+    playerX: 3,
+    playerY: 3,
+    facing: 'down' as 'up' | 'down' | 'left' | 'right',
+    moveCooldown: 0,
+    party: [] as PartyMonster[],
+    activePartyIdx: 0,
+    balls: 6,
+    potions: 3,
+    wins: 0,
+    badges: 0,
+    dialogLine1: '',
+    dialogLine2: '',
+    flashTimer: 0,
 
-function showDialog(l1: string, l2 = ''): void {
-  state.dialogLine1 = l1;
-  state.dialogLine2 = l2;
-  state.mode = 'DIALOG';
-}
-
-function updateOverworld(input: InputState): void {
-  if (state.moveCooldown <= 0) {
-    let dx = 0;
-    let dy = 0;
-    if (input.held.up) { dy = -1; state.facing = 'up'; }
-    else if (input.held.down) { dy = 1; state.facing = 'down'; }
-    else if (input.held.left) { dx = -1; state.facing = 'left'; }
-    else if (input.held.right) { dx = 1; state.facing = 'right'; }
-
-    if (dx !== 0 || dy !== 0) {
-      state.moveCooldown = 0.16;
-      const nx = state.playerX + dx;
-      const ny = state.playerY + dy;
-      const tile = MAP_ROWS[ny]?.[nx] ?? 'T';
-
-      if (tile === 'D') {
-        // Heal party at Poké-Healer Door!
-        state.party.forEach((m) => { m.hp = m.maxHp; });
-        state.balls = Math.max(state.balls, 5);
-        state.potions = Math.max(state.potions, 3);
-        state.ctx.audio.playPowerUp();
-        saveProgress();
-        showDialog('HEALER: Team healed!', 'Balls & Potions restocked!');
-        return;
-      }
-
-      if (tile === 'N') {
-        startBattle(false);
-        return;
-      }
-
-      if (tile !== 'T' && tile !== 'H' && tile !== 'W') {
-        state.playerX = nx;
-        state.playerY = ny;
-        state.ctx.audio.playButtonClick();
-
-        if (tile === 'G' && Math.random() < 0.35) {
-          startBattle(true);
-        }
-      }
-    }
-  }
-
-  if (input.justPressed.a) {
-    const fx = state.playerX + (state.facing === 'left' ? -1 : state.facing === 'right' ? 1 : 0);
-    const fy = state.playerY + (state.facing === 'up' ? -1 : state.facing === 'down' ? 1 : 0);
-    const frontTile = MAP_ROWS[fy]?.[fx] ?? '';
-    if (frontTile === 'D') {
-      state.party.forEach((m) => { m.hp = m.maxHp; });
-      state.ctx.audio.playPowerUp();
-      showDialog('HEALER: All monsters', 'restored to full HP!');
-    } else if (frontTile === 'N') {
-      startBattle(false);
-    } else {
-      const lead = state.party[0];
-      const sp = getSpecies(lead.speciesId);
-      showDialog(`${sp.name} Lv.${lead.level} (${ state.party.length }/6)`, `Wins:${state.wins} Balls:${state.balls}`);
-    }
-  }
-}
-
-function startBattle(isWild: boolean): void {
-  state.isWild = isWild;
-  const randomSp = SPECIES[Math.floor(Math.random() * SPECIES.length)];
-  const avgLv = Math.max(3, state.party[0]?.level ?? 5);
-  const enemyLv = isWild ? Math.max(2, avgLv - 1 + Math.floor(Math.random() * 3)) : avgLv + 1;
-  state.enemy = createPartyMonster(randomSp.id, enemyLv);
-
-  // Pick first healthy monster in player's party
-  const healthyIdx = state.party.findIndex((m) => m.hp > 0);
-  if (healthyIdx === -1) {
-    state.party.forEach((m) => { m.hp = m.maxHp; });
-    state.activePartyIdx = 0;
-  } else {
-    state.activePartyIdx = healthyIdx;
-  }
-
-  state.flashTimer = 0.55;
-  state.mode = 'ENCOUNTER_FLASH';
-  state.menuCursor = 0;
-  state.moveCursor = 0;
-  const sp = getSpecies(state.enemy.speciesId);
-  state.battleMsg1 = isWild ? `Wild ${sp.name} appeared!` : `Rival sent out ${sp.name}!`;
-  state.battleMsg2 = 'Press A to battle!';
-  state.battlePhase = 'MSG';
-  state.afterMsgAction = () => {
-    state.battlePhase = 'MENU';
+    // Battle state
+    enemy: null as PartyMonster | null,
+    isWild: true,
+    trainerTitle: '',
+    battlePhase: 'MENU' as 'MENU' | 'MOVES' | 'PARTY' | 'MSG' | 'CATCH_ANIM',
+    menuCursor: 0,
+    moveCursor: 0,
+    partyCursor: 0,
+    battleMsg1: '',
+    battleMsg2: '',
+    afterMsgAction: null as (() => void) | null,
+    catchShakeTimer: 0,
   };
-  state.ctx.audio.startBGM('monster_battle');
-}
 
-function setBattleMessage(l1: string, l2: string, next: () => void): void {
-  state.battleMsg1 = l1;
-  state.battleMsg2 = l2;
-  state.battlePhase = 'MSG';
-  state.afterMsgAction = next;
-}
+  function saveProgress(): void {
+    if (!state.ctx) return;
+    state.ctx.storage.saveData<SaveProgress>(cartId, {
+      party: state.party,
+      balls: state.balls,
+      potions: state.potions,
+      wins: state.wins,
+      badges: state.badges,
+    });
+    state.ctx.storage.setHighScore(
+      cartId,
+      state.wins * 100 + state.badges * 250 + state.party.length * 50
+    );
 
-function updateBattle(dt: number, input: InputState): void {
-  const playerMon = state.party[state.activePartyIdx];
-  const enemyMon = state.enemy!;
-  const playerSp = getSpecies(playerMon.speciesId);
-  const enemySp = getSpecies(enemyMon.speciesId);
+    if (hwEmulator.isRunningHardware()) {
+      const sram = hwEmulator.extractSram();
+      if (sram.length > 0) {
+        state.ctx.storage.saveData<number[]>(`${cartId}-sram`, sram);
+      }
+    }
+  }
 
-  if (state.battlePhase === 'CATCH_ANIM') {
-    state.catchShakeTimer -= dt;
-    if (state.catchShakeTimer <= 0) {
-      const hpRatio = enemyMon.hp / enemyMon.maxHp;
-      const catchChance = 0.45 + (1 - hpRatio) * 0.5;
-      if (Math.random() <= catchChance) {
-        state.ctx.audio.playPowerUp();
-        if (state.party.length < 6) {
-          state.party.push({ ...enemyMon });
-        }
+  function showDialog(l1: string, l2 = ''): void {
+    state.dialogLine1 = l1;
+    state.dialogLine2 = l2;
+    state.mode = 'DIALOG';
+  }
+
+  function startBattle(isWild: boolean, customEnemyId?: string, customLv?: number, trainerName = ''): void {
+    state.isWild = isWild;
+    state.trainerTitle = trainerName;
+    const chosenId =
+      customEnemyId ?? wildPool[Math.floor(Math.random() * wildPool.length)];
+    const avgLv = Math.max(5, state.party[0]?.level ?? 5);
+    const enemyLv =
+      customLv ?? (isWild ? Math.max(3, avgLv - 1 + Math.floor(Math.random() * 3)) : avgLv + 2);
+    state.enemy = createPartyMonster(chosenId, enemyLv);
+
+    const healthyIdx = state.party.findIndex((m) => m.hp > 0);
+    if (healthyIdx === -1) {
+      state.party.forEach((m) => {
+        m.hp = m.maxHp;
+      });
+      state.activePartyIdx = 0;
+    } else {
+      state.activePartyIdx = healthyIdx;
+    }
+
+    state.flashTimer = 0.5;
+    state.mode = 'ENCOUNTER_FLASH';
+    state.menuCursor = 0;
+    state.moveCursor = 0;
+    const sp = getSpecies(state.enemy.speciesId);
+    state.battleMsg1 = isWild
+      ? `Wild ${sp.name} appeared!`
+      : `${trainerName || gymLeaderName} sent ${sp.name}!`;
+    state.battleMsg2 = `Go! ${getSpecies(state.party[state.activePartyIdx].speciesId).name}!`;
+    state.battlePhase = 'MSG';
+    state.afterMsgAction = () => {
+      state.battlePhase = 'MENU';
+    };
+    state.ctx.audio.startBGM('monster_battle');
+  }
+
+  function setBattleMessage(l1: string, l2: string, next: () => void): void {
+    state.battleMsg1 = l1;
+    state.battleMsg2 = l2;
+    state.battlePhase = 'MSG';
+    state.afterMsgAction = next;
+  }
+
+  function endBattleToOverworld(): void {
+    state.mode = 'OVERWORLD';
+    state.ctx.audio.startBGM('monster_town');
+  }
+
+  function executePlayerMove(move: MoveDef): void {
+    const playerMon = state.party[state.activePartyIdx];
+    const enemyMon = state.enemy!;
+    const playerSp = getSpecies(playerMon.speciesId);
+    const enemySp = getSpecies(enemyMon.speciesId);
+
+    const mult = getTypeMultiplier(move.type, enemySp.type);
+    const rawDmg = ((playerSp.baseAtk + playerMon.level * 1.65) * move.power) / 14;
+    const dmg = Math.max(3, Math.round(rawDmg * mult));
+
+    enemyMon.hp = Math.max(0, enemyMon.hp - dmg);
+    state.ctx.audio.playHit();
+
+    const effText =
+      mult > 1.1
+        ? "It's super effective!"
+        : mult < 0.9
+          ? 'Not very effective...'
+          : `Dealt ${dmg} damage!`;
+
+    setBattleMessage(`${playerSp.name} used ${move.name}!`, effText, () => {
+      if (enemyMon.hp <= 0) {
         state.wins++;
+        if (!state.isWild) {
+          state.badges++;
+        }
+        playerMon.xp += state.isWild ? 25 : 50;
+        let lvMsg = state.isWild ? 'Gained 25 EXP!' : `Won ${badgeName}!`;
+        if (playerMon.xp >= 50) {
+          playerMon.xp -= 50;
+          playerMon.level++;
+          playerMon.maxHp += 5;
+          playerMon.hp = playerMon.maxHp;
+          if (playerSp.evolvesTo && playerMon.level >= (playerSp.evolveLv ?? 8)) {
+            playerMon.speciesId = playerSp.evolvesTo;
+            const evoSp = getSpecies(playerMon.speciesId);
+            lvMsg = `Evolved into ${evoSp.name}!`;
+          } else {
+            lvMsg = `Grew to Lv.${playerMon.level}!`;
+          }
+        }
+        state.ctx.audio.playPowerUp();
         saveProgress();
-        setBattleMessage(`Gotcha! ${enemySp.name}`, 'was caught & added!', () => {
+        setBattleMessage(`Foe ${enemySp.name} fainted!`, lvMsg, () => {
           endBattleToOverworld();
         });
       } else {
-        state.ctx.audio.playMenuBack();
-        setBattleMessage(`Oh no! ${enemySp.name}`, 'broke free!', () => {
-          enemyTurn();
-        });
+        enemyTurn();
       }
-    }
-    return;
+    });
   }
 
-  if (state.battlePhase === 'MSG') {
-    if (input.justPressed.a || input.justPressed.b || input.justPressed.start) {
-      state.ctx.audio.playMenuSelect();
-      const fn = state.afterMsgAction;
-      state.afterMsgAction = null;
-      if (fn) fn();
-    }
-    return;
-  }
+  function enemyTurn(): void {
+    const playerMon = state.party[state.activePartyIdx];
+    const enemyMon = state.enemy!;
+    const playerSp = getSpecies(playerMon.speciesId);
+    const enemySp = getSpecies(enemyMon.speciesId);
 
-  if (state.battlePhase === 'MENU') {
-    if (input.justPressed.left && state.menuCursor % 2 === 1) {
-      state.menuCursor--;
-      state.ctx.audio.playMenuMove();
-    } else if (input.justPressed.right && state.menuCursor % 2 === 0) {
-      state.menuCursor++;
-      state.ctx.audio.playMenuMove();
-    } else if (input.justPressed.up && state.menuCursor >= 2) {
-      state.menuCursor -= 2;
-      state.ctx.audio.playMenuMove();
-    } else if (input.justPressed.down && state.menuCursor < 2) {
-      state.menuCursor += 2;
-      state.ctx.audio.playMenuMove();
-    }
+    const move = enemySp.moves[Math.floor(Math.random() * enemySp.moves.length)];
+    const mult = getTypeMultiplier(move.type, playerSp.type);
+    const rawDmg = ((enemySp.baseAtk + enemyMon.level * 1.35) * move.power) / 16;
+    const dmg = Math.max(2, Math.round(rawDmg * mult));
 
-    if (input.justPressed.a) {
-      state.ctx.audio.playMenuSelect();
-      if (state.menuCursor === 0) {
-        state.moveCursor = 0;
-        state.battlePhase = 'MOVES';
-      } else if (state.menuCursor === 1) {
-        state.partyCursor = state.activePartyIdx;
-        state.battlePhase = 'PARTY';
-      } else if (state.menuCursor === 2) {
-        // BAG: Throw Monster Ball if wild and enemy weakened, else use Potion if injured
-        if (state.isWild && state.balls > 0 && (playerMon.hp > playerMon.maxHp * 0.4 || state.potions === 0)) {
-          state.balls--;
-          state.catchShakeTimer = 1.1;
-          state.battlePhase = 'CATCH_ANIM';
-          state.ctx.audio.playJump();
-        } else if (state.potions > 0) {
-          state.potions--;
-          playerMon.hp = Math.min(playerMon.maxHp, playerMon.hp + 24);
-          state.ctx.audio.playPowerUp();
-          setBattleMessage(`Used POTION on ${playerSp.name}!`, `Restored 24 HP! (${state.potions} left)`, () => {
-            enemyTurn();
-          });
-        } else {
-          setBattleMessage('Bag is empty!', 'Visit Healer house in town!', () => {
+    playerMon.hp = Math.max(0, playerMon.hp - dmg);
+    state.ctx.audio.playHit();
+
+    setBattleMessage(`Foe ${enemySp.name} used`, `${move.name}! (-${dmg} HP)`, () => {
+      if (playerMon.hp <= 0) {
+        const nextHealthy = state.party.findIndex((m) => m.hp > 0);
+        if (nextHealthy !== -1) {
+          state.activePartyIdx = nextHealthy;
+          const nextSp = getSpecies(state.party[nextHealthy].speciesId);
+          setBattleMessage(`${playerSp.name} fainted!`, `Go! ${nextSp.name}!`, () => {
             state.battlePhase = 'MENU';
           });
+        } else {
+          state.party.forEach((m) => {
+            m.hp = m.maxHp;
+          });
+          setBattleMessage('Party healed at', 'PALLET POKE CENTER!', () => {
+            state.playerX = 2;
+            state.playerY = 3;
+            endBattleToOverworld();
+          });
         }
-      } else if (state.menuCursor === 3) {
-        state.ctx.audio.playMenuBack();
-        setBattleMessage('Got away safely!', '', () => {
-          endBattleToOverworld();
-        });
-      }
-    }
-    return;
-  }
-
-  if (state.battlePhase === 'MOVES') {
-    if (input.justPressed.b) {
-      state.ctx.audio.playMenuBack();
-      state.battlePhase = 'MENU';
-      return;
-    }
-    if (input.justPressed.up && state.moveCursor > 0) {
-      state.moveCursor--;
-      state.ctx.audio.playMenuMove();
-    } else if (input.justPressed.down && state.moveCursor < playerSp.moves.length - 1) {
-      state.moveCursor++;
-      state.ctx.audio.playMenuMove();
-    }
-
-    if (input.justPressed.a) {
-      const move = playerSp.moves[state.moveCursor];
-      executePlayerMove(move);
-    }
-    return;
-  }
-
-  if (state.battlePhase === 'PARTY') {
-    if (input.justPressed.b) {
-      state.ctx.audio.playMenuBack();
-      state.battlePhase = 'MENU';
-      return;
-    }
-    if (input.justPressed.up && state.partyCursor > 0) {
-      state.partyCursor--;
-      state.ctx.audio.playMenuMove();
-    } else if (input.justPressed.down && state.partyCursor < state.party.length - 1) {
-      state.partyCursor++;
-      state.ctx.audio.playMenuMove();
-    }
-
-    if (input.justPressed.a) {
-      const chosen = state.party[state.partyCursor];
-      if (chosen.hp <= 0) {
-        state.ctx.audio.playMenuBack();
       } else {
-        state.activePartyIdx = state.partyCursor;
-        const sp = getSpecies(chosen.speciesId);
-        state.ctx.audio.playMenuSelect();
-        setBattleMessage(`Go! ${sp.name}!`, '', () => {
-          enemyTurn();
-        });
+        state.battlePhase = 'MENU';
+      }
+    });
+  }
+
+  function updateTitle(input: InputState): void {
+    if (input.justPressed.up && state.titleCursor > 0) {
+      state.titleCursor--;
+      state.ctx.audio.playMenuMove();
+    } else if (input.justPressed.down && state.titleCursor < 2) {
+      state.titleCursor++;
+      state.ctx.audio.playMenuMove();
+    } else if (input.justPressed.a || input.justPressed.start) {
+      state.ctx.audio.playMenuSelect();
+      if (state.titleCursor === 0) {
+        if (hwEmulator.isRunningHardware()) {
+          state.mode = 'EMU_ROM';
+        } else {
+          state.mode = 'OVERWORLD';
+          state.ctx.audio.startBGM('monster_town');
+        }
+      } else if (state.titleCursor === 1) {
+        startBattle(false, gymBossId, 9, gymLeaderName);
+      } else if (state.titleCursor === 2) {
+        state.ctx.openRomFilePicker();
       }
     }
   }
-}
 
-function executePlayerMove(move: MoveDef): void {
-  const playerMon = state.party[state.activePartyIdx];
-  const enemyMon = state.enemy!;
-  const playerSp = getSpecies(playerMon.speciesId);
-  const enemySp = getSpecies(enemyMon.speciesId);
-
-  const mult = getTypeMultiplier(move.type, enemySp.type);
-  const rawDmg = ((playerSp.baseAtk + playerMon.level * 1.6) * move.power) / 14;
-  const dmg = Math.max(3, Math.round(rawDmg * mult));
-
-  enemyMon.hp = Math.max(0, enemyMon.hp - dmg);
-  state.ctx.audio.playHit();
-
-  const effText = mult > 1.1 ? "It's super effective!" : mult < 0.9 ? 'Not very effective...' : `Dealt ${dmg} damage!`;
-
-  setBattleMessage(`${playerSp.name} used ${move.name}!`, effText, () => {
-    if (enemyMon.hp <= 0) {
-      state.wins++;
-      playerMon.xp += 25;
-      let lvMsg = `Gained 25 XP!`;
-      if (playerMon.xp >= 50) {
-        playerMon.xp -= 50;
-        playerMon.level++;
-        playerMon.maxHp += 5;
-        playerMon.hp = playerMon.maxHp;
-        lvMsg = `LEVELED UP to Lv.${playerMon.level}!`;
-      }
+  function updateStarterSelect(input: InputState): void {
+    if (input.justPressed.left && state.starterCursor > 0) {
+      state.starterCursor--;
+      state.ctx.audio.playMenuMove();
+    } else if (input.justPressed.right && state.starterCursor < 2) {
+      state.starterCursor++;
+      state.ctx.audio.playMenuMove();
+    } else if (input.justPressed.b) {
+      state.ctx.audio.playMenuBack();
+      state.mode = 'OVERWORLD';
+    } else if (input.justPressed.a || input.justPressed.start) {
+      const starters = ['charmander', 'squirtle', 'bulbasaur'];
+      const chosenId = starters[state.starterCursor];
+      const sp = getSpecies(chosenId);
+      state.party[0] = createPartyMonster(chosenId, Math.max(5, state.party[0]?.level ?? 5));
       state.ctx.audio.playPowerUp();
       saveProgress();
-      setBattleMessage(`${enemySp.name} fainted!`, lvMsg, () => {
-        endBattleToOverworld();
-      });
-    } else {
-      enemyTurn();
+      showDialog(`OAK: You chose ${sp.name}!`, 'Take on Route 1 & the Gym!');
     }
-  });
-}
+  }
 
-function enemyTurn(): void {
-  const playerMon = state.party[state.activePartyIdx];
-  const enemyMon = state.enemy!;
-  const playerSp = getSpecies(playerMon.speciesId);
-  const enemySp = getSpecies(enemyMon.speciesId);
+  function updateOverworld(input: InputState): void {
+    if (input.justPressed.start) {
+      state.ctx.audio.playMenuMove();
+      state.mode = 'TITLE';
+      return;
+    }
 
-  const move = enemySp.moves[Math.floor(Math.random() * enemySp.moves.length)];
-  const mult = getTypeMultiplier(move.type, playerSp.type);
-  const rawDmg = ((enemySp.baseAtk + enemyMon.level * 1.4) * move.power) / 16;
-  const dmg = Math.max(2, Math.round(rawDmg * mult));
-
-  playerMon.hp = Math.max(0, playerMon.hp - dmg);
-  state.ctx.audio.playHit();
-
-  setBattleMessage(`Foe ${enemySp.name} used`, `${move.name}! (-${dmg} HP)`, () => {
-    if (playerMon.hp <= 0) {
-      const nextHealthy = state.party.findIndex((m) => m.hp > 0);
-      if (nextHealthy !== -1) {
-        state.activePartyIdx = nextHealthy;
-        const nextSp = getSpecies(state.party[nextHealthy].speciesId);
-        setBattleMessage(`${playerSp.name} fainted!`, `Sent out ${nextSp.name}!`, () => {
-          state.battlePhase = 'MENU';
-        });
-      } else {
-        state.party.forEach((m) => { m.hp = m.maxHp; });
-        setBattleMessage('All monsters tired!', 'Rushed to Healer House!', () => {
-          state.playerX = 2;
-          state.playerY = 3;
-          endBattleToOverworld();
-        });
+    if (state.moveCooldown <= 0) {
+      let dx = 0;
+      let dy = 0;
+      if (input.held.up) {
+        dy = -1;
+        state.facing = 'up';
+      } else if (input.held.down) {
+        dy = 1;
+        state.facing = 'down';
+      } else if (input.held.left) {
+        dx = -1;
+        state.facing = 'left';
+      } else if (input.held.right) {
+        dx = 1;
+        state.facing = 'right';
       }
-    } else {
-      state.battlePhase = 'MENU';
-    }
-  });
-}
 
-function endBattleToOverworld(): void {
-  state.mode = 'OVERWORLD';
-  state.ctx.audio.startBGM('monster_town');
-}
+      if (dx !== 0 || dy !== 0) {
+        state.moveCooldown = 0.16;
+        const nx = state.playerX + dx;
+        const ny = state.playerY + dy;
+        const tile = MAP_ROWS[ny]?.[nx] ?? 'T';
 
-function renderOverworld(ctx: CanvasRenderingContext2D): void {
-  ctx.fillStyle = '#98e070';
-  ctx.fillRect(0, 0, 160, 144);
-
-  for (let r = 0; r < 9; r++) {
-    for (let c = 0; c < 10; c++) {
-      const tx = c * 16;
-      const ty = r * 16;
-      const ch = MAP_ROWS[r][c];
-
-      if (ch === 'T') {
-        // Tree
-        ctx.fillStyle = '#205828';
-        ctx.fillRect(tx + 1, ty + 1, 14, 14);
-        ctx.fillStyle = '#389038';
-        ctx.fillRect(tx + 3, ty + 2, 10, 9);
-        ctx.fillStyle = '#583820';
-        ctx.fillRect(tx + 6, ty + 11, 4, 4);
-      } else if (ch === 'G') {
-        // Tall grass blades
-        ctx.fillStyle = '#38a038';
-        for (let gx = 2; gx < 14; gx += 4) {
-          ctx.fillRect(tx + gx, ty + 4, 2, 10);
-          ctx.fillRect(tx + gx + 1, ty + 2, 2, 4);
+        if (tile === 'D') {
+          state.party.forEach((m) => {
+            m.hp = m.maxHp;
+          });
+          state.balls = Math.max(state.balls, 6);
+          state.potions = Math.max(state.potions, 3);
+          state.ctx.audio.playPowerUp();
+          saveProgress();
+          showDialog('POKE CENTER: Party healed!', 'Poke Balls & Potions filled!');
+          return;
         }
-      } else if (ch === 'W') {
-        const wave = Math.floor(state.animTime * 3) % 2 === 0;
-        ctx.fillStyle = '#2880e8';
-        ctx.fillRect(tx, ty, 16, 16);
-        ctx.fillStyle = '#78c8f8';
-        ctx.fillRect(tx + (wave ? 2 : 5), ty + 5, 8, 2);
-      } else if (ch === 'H') {
-        ctx.fillStyle = '#d84040';
-        ctx.fillRect(tx, ty, 16, 16);
-        ctx.fillStyle = '#f8f8f0';
-        ctx.fillRect(tx + 2, ty + 12, 12, 4);
-      } else if (ch === 'D') {
-        ctx.fillStyle = '#f8f0d8';
-        ctx.fillRect(tx, ty, 16, 16);
-        ctx.fillStyle = '#2868c8';
-        ctx.fillRect(tx + 4, ty + 4, 8, 12);
-        drawPixelText(ctx, 'HEAL', tx + 1, ty - 6, { color: '#ffffff', size: 4, shadow: '#181818' });
-      } else if (ch === 'N') {
-        // Rival Trainer NPC
-        drawTrainerSprite(ctx, tx + 2, ty + 2, '#d83838', '#f8c838');
-      } else if (ch === 'o') {
-        // Decorative flower
-        ctx.fillStyle = '#f85898';
-        ctx.fillRect(tx + 6, ty + 6, 4, 4);
+
+        if (tile === 'O') {
+          state.ctx.audio.playMenuSelect();
+          state.mode = 'STARTER_SELECT';
+          return;
+        }
+
+        if (tile === 'N') {
+          startBattle(false, gymBossId, 9, gymLeaderName);
+          return;
+        }
+
+        if (tile !== 'T' && tile !== 'H' && tile !== 'W') {
+          state.playerX = nx;
+          state.playerY = ny;
+          state.ctx.audio.playButtonClick();
+
+          if (tile === 'G' && Math.random() < 0.35) {
+            startBattle(true);
+          }
+        }
+      }
+    }
+
+    if (input.justPressed.a) {
+      const fx = state.playerX + (state.facing === 'left' ? -1 : state.facing === 'right' ? 1 : 0);
+      const fy = state.playerY + (state.facing === 'up' ? -1 : state.facing === 'down' ? 1 : 0);
+      const frontTile = MAP_ROWS[fy]?.[fx] ?? '';
+      if (frontTile === 'D') {
+        state.party.forEach((m) => {
+          m.hp = m.maxHp;
+        });
+        state.ctx.audio.playPowerUp();
+        showDialog('NURSE JOY: Your Pokemon', 'are fighting fit again!');
+      } else if (frontTile === 'O') {
+        state.ctx.audio.playMenuSelect();
+        state.mode = 'STARTER_SELECT';
+      } else if (frontTile === 'N') {
+        startBattle(false, gymBossId, 9, gymLeaderName);
+      } else {
+        const lead = state.party[0];
+        const sp = getSpecies(lead.speciesId);
+        showDialog(
+          `${sp.name} Lv.${lead.level} (${state.party.length}/6)`,
+          `Badges:${state.badges} Wins:${state.wins} Ball:${state.balls}`
+        );
       }
     }
   }
 
-  // Player sprite
-  drawTrainerSprite(ctx, state.playerX * 16 + 2, state.playerY * 16 + 2, '#2060d8', '#f83838');
+  function updateBattle(dt: number, input: InputState): void {
+    const playerMon = state.party[state.activePartyIdx];
+    const enemyMon = state.enemy!;
+    const playerSp = getSpecies(playerMon.speciesId);
+    const enemySp = getSpecies(enemyMon.speciesId);
 
-  // Top HUD strip
-  ctx.fillStyle = 'rgba(16, 24, 20, 0.82)';
-  ctx.fillRect(0, 0, 160, 12);
-  const lead = state.party[0];
-  const sp = getSpecies(lead.speciesId);
-  drawPixelText(ctx, `${sp.name} Lv${lead.level}`, 4, 3, { color: '#f8e858', size: 5 });
-  drawPixelText(ctx, `BALLx${state.balls} WIN:${state.wins}`, 88, 3, { color: '#f8f8f0', size: 5 });
+    if (state.battlePhase === 'CATCH_ANIM') {
+      state.catchShakeTimer -= dt;
+      if (state.catchShakeTimer <= 0) {
+        const hpRatio = enemyMon.hp / enemyMon.maxHp;
+        const catchChance = 0.48 + (1 - hpRatio) * 0.5;
+        if (Math.random() <= catchChance) {
+          state.ctx.audio.playPowerUp();
+          if (state.party.length < 6) {
+            state.party.push({ ...enemyMon });
+          }
+          state.wins++;
+          saveProgress();
+          setBattleMessage(`Gotcha! ${enemySp.name}`, 'was caught! Added to party!', () => {
+            endBattleToOverworld();
+          });
+        } else {
+          state.ctx.audio.playMenuBack();
+          setBattleMessage(`Shoot! ${enemySp.name}`, 'broke free from the ball!', () => {
+            enemyTurn();
+          });
+        }
+      }
+      return;
+    }
+
+    if (state.battlePhase === 'MSG') {
+      if (input.justPressed.a || input.justPressed.b || input.justPressed.start) {
+        state.ctx.audio.playMenuSelect();
+        const fn = state.afterMsgAction;
+        state.afterMsgAction = null;
+        if (fn) fn();
+      }
+      return;
+    }
+
+    if (state.battlePhase === 'MENU') {
+      if (input.justPressed.left && state.menuCursor % 2 === 1) {
+        state.menuCursor--;
+        state.ctx.audio.playMenuMove();
+      } else if (input.justPressed.right && state.menuCursor % 2 === 0) {
+        state.menuCursor++;
+        state.ctx.audio.playMenuMove();
+      } else if (input.justPressed.up && state.menuCursor >= 2) {
+        state.menuCursor -= 2;
+        state.ctx.audio.playMenuMove();
+      } else if (input.justPressed.down && state.menuCursor < 2) {
+        state.menuCursor += 2;
+        state.ctx.audio.playMenuMove();
+      }
+
+      if (input.justPressed.a) {
+        state.ctx.audio.playMenuSelect();
+        if (state.menuCursor === 0) {
+          state.moveCursor = 0;
+          state.battlePhase = 'MOVES';
+        } else if (state.menuCursor === 1) {
+          state.partyCursor = state.activePartyIdx;
+          state.battlePhase = 'PARTY';
+        } else if (state.menuCursor === 2) {
+          if (
+            state.isWild &&
+            state.balls > 0 &&
+            (playerMon.hp > playerMon.maxHp * 0.4 || state.potions === 0)
+          ) {
+            state.balls--;
+            state.catchShakeTimer = 1.05;
+            state.battlePhase = 'CATCH_ANIM';
+            state.ctx.audio.playJump();
+          } else if (state.potions > 0) {
+            state.potions--;
+            playerMon.hp = Math.min(playerMon.maxHp, playerMon.hp + 26);
+            state.ctx.audio.playPowerUp();
+            setBattleMessage(
+              `SUPER POTION on ${playerSp.name}!`,
+              `Recovered 26 HP! (${state.potions} left)`,
+              () => {
+                enemyTurn();
+              }
+            );
+          } else {
+            setBattleMessage('No items left in BAG!', 'Visit Pallet Poke Center!', () => {
+              state.battlePhase = 'MENU';
+            });
+          }
+        } else if (state.menuCursor === 3) {
+          state.ctx.audio.playMenuBack();
+          setBattleMessage('Got away safely!', '', () => {
+            endBattleToOverworld();
+          });
+        }
+      }
+      return;
+    }
+
+    if (state.battlePhase === 'MOVES') {
+      if (input.justPressed.b) {
+        state.ctx.audio.playMenuBack();
+        state.battlePhase = 'MENU';
+        return;
+      }
+      if (input.justPressed.up && state.moveCursor > 0) {
+        state.moveCursor--;
+        state.ctx.audio.playMenuMove();
+      } else if (input.justPressed.down && state.moveCursor < playerSp.moves.length - 1) {
+        state.moveCursor++;
+        state.ctx.audio.playMenuMove();
+      }
+
+      if (input.justPressed.a) {
+        const move = playerSp.moves[state.moveCursor];
+        executePlayerMove(move);
+      }
+      return;
+    }
+
+    if (state.battlePhase === 'PARTY') {
+      if (input.justPressed.b) {
+        state.ctx.audio.playMenuBack();
+        state.battlePhase = 'MENU';
+        return;
+      }
+      if (input.justPressed.up && state.partyCursor > 0) {
+        state.partyCursor--;
+        state.ctx.audio.playMenuMove();
+      } else if (input.justPressed.down && state.partyCursor < state.party.length - 1) {
+        state.partyCursor++;
+        state.ctx.audio.playMenuMove();
+      }
+
+      if (input.justPressed.a) {
+        const chosen = state.party[state.partyCursor];
+        if (chosen.hp <= 0) {
+          state.ctx.audio.playMenuBack();
+        } else {
+          state.activePartyIdx = state.partyCursor;
+          const sp = getSpecies(chosen.speciesId);
+          state.ctx.audio.playMenuSelect();
+          setBattleMessage(`Go! ${sp.name}!`, '', () => {
+            enemyTurn();
+          });
+        }
+      }
+    }
+  }
+
+  function renderTitle(ctx: CanvasRenderingContext2D): void {
+    // Super Game Boy Red / Blue border & cream backdrop
+    ctx.fillStyle = isRed ? '#fff4f0' : '#f0f6ff';
+    ctx.fillRect(0, 0, 160, 144);
+
+    // Top Version Banner
+    ctx.fillStyle = primaryHex;
+    ctx.fillRect(0, 0, 160, 27);
+    ctx.fillStyle = accentHex;
+    ctx.fillRect(0, 25, 160, 2);
+
+    drawPixelText(ctx, 'POKEMON', 80, 4, {
+      color: '#f8e838',
+      size: 9,
+      align: 'center',
+      shadow: '#181818',
+    });
+    drawPixelText(ctx, isRed ? 'RED VERSION' : 'BLUE VERSION', 80, 17, {
+      color: '#ffffff',
+      size: 5,
+      align: 'center',
+    });
+
+    // Mascot (Charizard or Blastoise) + Trainer Red/Blue showcase
+    const mascot = getSpecies(mascotId);
+    const bounce = Math.round(Math.sin(state.animTime * 4) * 1.5);
+    drawMonsterSprite(ctx, mascot, 22, 34 + bounce, 3);
+    drawTrainerSprite(
+      ctx,
+      106,
+      44,
+      isRed ? '#d82828' : '#2060d8',
+      isRed ? '#f83838' : '#2888f8',
+      2
+    );
+
+    // Loaded Hardware ROM indicator if active
+    const romMeta = hwEmulator.getMetadata();
+    if (romMeta && hwEmulator.isRunningHardware()) {
+      drawPixelText(ctx, `ROM READY: ${romMeta.title}`, 80, 74, {
+        color: primaryHex,
+        size: 4,
+        align: 'center',
+      });
+    } else {
+      drawPixelText(ctx, '(C)1996 GAME FREAK / LR35902', 80, 74, {
+        color: '#485060',
+        size: 3.8,
+        align: 'center',
+      });
+    }
+
+    // Title Menu Box
+    drawGBCBox(ctx, 8, 82, 144, 58, {
+      bg: '#f8f8f0',
+      borderOuter: primaryHex,
+      borderInner: '#283038',
+    });
+
+    const opts = [
+      hwEmulator.isRunningHardware() ? 'BOOT LOADED .GB ROM' : 'PLAY KANTO QUEST',
+      `BATTLE ${gymLeaderName}`,
+      `LOAD ${version}.GB ROM FILE`,
+    ];
+
+    opts.forEach((label, idx) => {
+      const y = 90 + idx * 15;
+      const sel = state.titleCursor === idx;
+      if (sel) {
+        drawPixelText(ctx, '>', 15, y, { color: primaryHex, size: 5 });
+      }
+      drawPixelText(ctx, label, 25, y, {
+        color: sel ? '#101820' : '#586470',
+        size: 4.5,
+      });
+    });
+  }
+
+  function renderStarterSelect(ctx: CanvasRenderingContext2D): void {
+    ctx.fillStyle = '#f8f4e0';
+    ctx.fillRect(0, 0, 160, 144);
+
+    drawGBCBox(ctx, 4, 4, 152, 24, { bg: primaryHex, borderOuter: '#181818' });
+    drawPixelText(ctx, "PROF. OAK'S LAB - PALLET", 80, 9, {
+      color: '#ffffff',
+      size: 4.5,
+      align: 'center',
+    });
+    drawPixelText(ctx, 'CHOOSE YOUR KANTO STARTER:', 80, 18, {
+      color: '#f8e838',
+      size: 4,
+      align: 'center',
+    });
+
+    const starters = ['charmander', 'squirtle', 'bulbasaur'];
+    starters.forEach((id, idx) => {
+      const sp = getSpecies(id);
+      const bx = 8 + idx * 49;
+      const by = 34;
+      const sel = state.starterCursor === idx;
+
+      drawGBCBox(ctx, bx, by, 46, 66, {
+        bg: sel ? '#ffffff' : '#e8e4d0',
+        borderOuter: sel ? primaryHex : '#788078',
+      });
+      drawMonsterSprite(ctx, sp, bx + 5, by + 8, 3);
+      drawPixelText(ctx, sp.name.slice(0, 7), bx + 23, by + 48, {
+        color: '#182018',
+        size: 3.8,
+        align: 'center',
+      });
+      drawPixelText(ctx, sp.type, bx + 23, by + 56, {
+        color: sp.color1,
+        size: 3.8,
+        align: 'center',
+      });
+    });
+
+    const chosenSp = getSpecies(starters[state.starterCursor]);
+    drawGBCBox(ctx, 4, 104, 152, 36);
+    drawPixelText(ctx, `OAK: Will you take ${chosenSp.name}`, 10, 110, {
+      color: '#182018',
+      size: 4.3,
+    });
+    drawPixelText(ctx, 'A:CONFIRM STARTER   B:BACK', 10, 123, {
+      color: primaryHex,
+      size: 4.2,
+    });
+  }
+
+  function renderOverworld(ctx: CanvasRenderingContext2D): void {
+    // Super Game Boy Red / Blue tinted overworld grass
+    ctx.fillStyle = isRed ? '#a8e078' : '#88e090';
+    ctx.fillRect(0, 0, 160, 144);
+
+    for (let r = 0; r < 9; r++) {
+      for (let c = 0; c < 10; c++) {
+        const tx = c * 16;
+        const ty = r * 16;
+        const ch = MAP_ROWS[r][c];
+
+        if (ch === 'T') {
+          ctx.fillStyle = isRed ? '#285828' : '#1c5438';
+          ctx.fillRect(tx + 1, ty + 1, 14, 14);
+          ctx.fillStyle = '#389038';
+          ctx.fillRect(tx + 3, ty + 2, 10, 9);
+          ctx.fillStyle = '#583820';
+          ctx.fillRect(tx + 6, ty + 11, 4, 4);
+        } else if (ch === 'G') {
+          ctx.fillStyle = '#309838';
+          for (let gx = 2; gx < 14; gx += 4) {
+            ctx.fillRect(tx + gx, ty + 4, 2, 10);
+            ctx.fillRect(tx + gx + 1, ty + 2, 2, 4);
+          }
+        } else if (ch === 'W') {
+          const wave = Math.floor(state.animTime * 3) % 2 === 0;
+          ctx.fillStyle = '#2078e8';
+          ctx.fillRect(tx, ty, 16, 16);
+          ctx.fillStyle = '#78c8f8';
+          ctx.fillRect(tx + (wave ? 2 : 5), ty + 5, 8, 2);
+        } else if (ch === 'H') {
+          ctx.fillStyle = primaryHex;
+          ctx.fillRect(tx, ty, 16, 16);
+          ctx.fillStyle = '#f8f8f0';
+          ctx.fillRect(tx + 2, ty + 12, 12, 4);
+        } else if (ch === 'D') {
+          ctx.fillStyle = '#f8f0d8';
+          ctx.fillRect(tx, ty, 16, 16);
+          ctx.fillStyle = primaryHex;
+          ctx.fillRect(tx + 4, ty + 4, 8, 12);
+          drawPixelText(ctx, 'HEAL', tx + 1, ty - 6, {
+            color: '#ffffff',
+            size: 4,
+            shadow: '#181818',
+          });
+        } else if (ch === 'O') {
+          // Prof. Oak's 3 Starter Poké Balls Table
+          ctx.fillStyle = '#b88848';
+          ctx.fillRect(tx + 1, ty + 3, 14, 10);
+          for (let b = 0; b < 3; b++) {
+            ctx.fillStyle = '#e83030';
+            ctx.fillRect(tx + 2 + b * 4, ty + 5, 3, 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(tx + 2 + b * 4, ty + 7, 3, 2);
+          }
+          drawPixelText(ctx, 'OAK', tx + 2, ty - 5, {
+            color: '#f8e838',
+            size: 3.8,
+            shadow: '#181818',
+          });
+        } else if (ch === 'N') {
+          drawTrainerSprite(
+            ctx,
+            tx + 2,
+            ty + 2,
+            isRed ? '#885830' : '#2088d8',
+            '#f8c838',
+            1
+          );
+          drawPixelText(ctx, isRed ? 'BROCK' : 'MISTY', tx - 2, ty - 5, {
+            color: '#ffffff',
+            size: 3.6,
+            shadow: '#181818',
+          });
+        } else if (ch === 'o') {
+          ctx.fillStyle = primaryHex;
+          ctx.fillRect(tx + 6, ty + 6, 4, 4);
+        }
+      }
+    }
+
+    // Player Red / Blue Sprite
+    drawTrainerSprite(
+      ctx,
+      state.playerX * 16 + 2,
+      state.playerY * 16 + 2,
+      primaryHex,
+      accentHex,
+      1
+    );
+
+    // Top HUD strip
+    ctx.fillStyle = 'rgba(16, 20, 28, 0.88)';
+    ctx.fillRect(0, 0, 160, 12);
+    const lead = state.party[0];
+    const sp = getSpecies(lead.speciesId);
+    drawPixelText(ctx, `${sp.name.slice(0, 9)} Lv${lead.level}`, 4, 3, {
+      color: '#f8e858',
+      size: 4.5,
+    });
+    drawPixelText(ctx, `PKM:${version} WIN:${state.wins}`, 92, 3, {
+      color: '#f8f8f0',
+      size: 4.5,
+    });
+  }
+
+  function renderBattle(ctx: CanvasRenderingContext2D): void {
+    const playerMon = state.party[state.activePartyIdx];
+    const enemyMon = state.enemy!;
+    const playerSp = getSpecies(playerMon.speciesId);
+    const enemySp = getSpecies(enemyMon.speciesId);
+
+    ctx.fillStyle = '#f8f6e8';
+    ctx.fillRect(0, 0, 160, 144);
+
+    // Enemy Status HUD (Top Left)
+    drawGBCBox(ctx, 4, 4, 96, 28, { bg: '#f0eed8', borderOuter: primaryHex });
+    drawPixelText(ctx, enemySp.name, 8, 8, { color: '#182018', size: 4.3 });
+    drawPixelText(ctx, `:L${enemyMon.level}`, 96, 8, {
+      color: '#285828',
+      size: 4.3,
+      align: 'right',
+    });
+    drawPixelText(ctx, 'HP:', 8, 19, { color: '#182018', size: 4 });
+    drawHealthBar(ctx, 24, 19, 70, 5, enemyMon.hp / enemyMon.maxHp);
+
+    // Enemy Platform & Sprite (Top Right)
+    ctx.fillStyle = '#d0dcc0';
+    ctx.fillRect(102, 38, 52, 8);
+    if (state.battlePhase === 'CATCH_ANIM') {
+      const wobble = Math.round(Math.sin(state.animTime * 22) * 3);
+      const bx = 122 + wobble;
+      const by = 22;
+      ctx.fillStyle = '#e83030';
+      ctx.fillRect(bx, by, 12, 6);
+      ctx.fillStyle = '#f8f8f0';
+      ctx.fillRect(bx, by + 6, 12, 6);
+      ctx.fillStyle = '#181818';
+      ctx.fillRect(bx, by + 5, 12, 2);
+    } else {
+      drawMonsterSprite(ctx, enemySp, 110, 6, 3);
+    }
+
+    // Player Platform & Sprite (Mid Left)
+    ctx.fillStyle = '#d0dcc0';
+    ctx.fillRect(6, 86, 54, 8);
+    drawMonsterSprite(ctx, playerSp, 14, 54, 3);
+
+    // Player Status HUD (Mid Right)
+    drawGBCBox(ctx, 62, 56, 94, 36, { bg: '#f0eed8', borderOuter: primaryHex });
+    drawPixelText(ctx, playerSp.name, 66, 60, { color: '#182018', size: 4.3 });
+    drawPixelText(ctx, `:L${playerMon.level}`, 152, 60, {
+      color: '#285828',
+      size: 4.3,
+      align: 'right',
+    });
+    drawPixelText(ctx, 'HP:', 66, 70, { color: '#182018', size: 4 });
+    drawHealthBar(ctx, 82, 70, 68, 5, playerMon.hp / playerMon.maxHp);
+    drawPixelText(ctx, `${playerMon.hp}/${playerMon.maxHp}`, 150, 79, {
+      color: '#304030',
+      size: 4,
+      align: 'right',
+    });
+
+    // Bottom Battle Box
+    drawGBCBox(ctx, 4, 96, 152, 44, { borderOuter: primaryHex });
+
+    if (state.battlePhase === 'MSG' || state.battlePhase === 'CATCH_ANIM') {
+      drawPixelText(ctx, state.battleMsg1, 10, 104, { color: '#182018', size: 4.5 });
+      drawPixelText(ctx, state.battleMsg2, 10, 118, { color: '#384838', size: 4.5 });
+      return;
+    }
+
+    if (state.battlePhase === 'MENU') {
+      drawPixelText(ctx, 'What will', 10, 105, { color: '#182018', size: 4.5 });
+      drawPixelText(ctx, `${playerSp.name} do?`, 10, 118, { color: '#182018', size: 4.5 });
+
+      drawGBCBox(ctx, 82, 96, 74, 44, { bg: '#ffffff', borderOuter: primaryHex });
+      const opts = ['FIGHT', 'PKMN', 'ITEM', 'RUN'];
+      opts.forEach((opt, idx) => {
+        const ox = 90 + (idx % 2) * 34;
+        const oy = 105 + Math.floor(idx / 2) * 16;
+        if (state.menuCursor === idx) {
+          drawPixelText(ctx, '>', ox - 5, oy, { color: primaryHex, size: 4.5 });
+        }
+        drawPixelText(ctx, opt, ox, oy, { color: '#182018', size: 4.5 });
+      });
+      return;
+    }
+
+    if (state.battlePhase === 'MOVES') {
+      playerSp.moves.forEach((m, idx) => {
+        const my = 102 + idx * 12;
+        if (state.moveCursor === idx) {
+          drawPixelText(ctx, '>', 10, my, { color: primaryHex, size: 4.5 });
+        }
+        drawPixelText(ctx, `${m.name} (${m.type})`, 18, my, {
+          color: '#182018',
+          size: 4.3,
+        });
+      });
+      return;
+    }
+
+    if (state.battlePhase === 'PARTY') {
+      state.party.slice(0, 3).forEach((mon, idx) => {
+        const sp = getSpecies(mon.speciesId);
+        const py = 102 + idx * 12;
+        if (state.partyCursor === idx) {
+          drawPixelText(ctx, '>', 10, py, { color: primaryHex, size: 4.5 });
+        }
+        drawPixelText(ctx, `${sp.name} Lv${mon.level} ${mon.hp}/${mon.maxHp}`, 18, py, {
+          color: mon.hp > 0 ? '#182018' : '#a83838',
+          size: 4.2,
+        });
+      });
+    }
+  }
+
+  return {
+    id: cartId,
+    title: isRed ? 'POKEMON RED' : 'POKEMON BLUE',
+    subtitle: isRed ? 'RED VERSION (GEN 1)' : 'BLUE VERSION (GEN 1)',
+    genre: 'RPG / EMU',
+    description: isRed
+      ? 'Gen-1 Pokemon Red (Charizard, Pallet Town, Brock) + real .gb ROM emulator!'
+      : 'Gen-1 Pokemon Blue (Blastoise, Pallet Town, Misty) + real .gb ROM emulator!',
+    cartridgeColor: primaryHex,
+    labelColor: isRed ? '#2a1014' : '#101c38',
+    accentColor: accentHex,
+
+    renderPreviewIcon(ctx, x, y, w, h, time) {
+      ctx.fillStyle = isRed ? '#280c10' : '#0c1830';
+      ctx.fillRect(x, y, w, h);
+
+      const mascot = getSpecies(mascotId);
+      const bob = Math.round(Math.sin(time * 4) * 1.5);
+      drawMonsterSprite(ctx, mascot, x + 6, y + 4 + bob, 2);
+    },
+
+    init(context: GameContext) {
+      state.ctx = context;
+      const saved = context.storage.loadData<SaveProgress | null>(cartId, null);
+      if (saved && saved.party?.length > 0) {
+        state.party = saved.party;
+        state.balls = saved.balls ?? 6;
+        state.potions = saved.potions ?? 3;
+        state.wins = saved.wins ?? 0;
+        state.badges = saved.badges ?? 0;
+      } else {
+        state.party = [
+          createPartyMonster(defaultStarterId, 5),
+          createPartyMonster('pikachu', 4),
+        ];
+        state.balls = 6;
+        state.potions = 3;
+        state.wins = 0;
+        state.badges = 0;
+      }
+
+      state.playerX = 3;
+      state.playerY = 3;
+      state.titleCursor = 0;
+      state.mode = hwEmulator.isRunningHardware() ? 'EMU_ROM' : 'TITLE';
+      context.audio.startBGM('monster_town');
+    },
+
+    onRomLoaded(fileName: string, bytes: Uint8Array) {
+      const savedSram = state.ctx?.storage.loadData<number[] | null>(`${cartId}-sram`, null);
+      const sgbPalette: [number, number, number, number] = isRed
+        ? [0xfff4f0, 0xf89878, 0xd82828, 0x181018]
+        : [0xf0f6ff, 0x68b8f8, 0x1e58d8, 0x101828];
+      const meta = hwEmulator.loadRom(fileName, bytes, savedSram, sgbPalette);
+      if (meta.isExecutable && hwEmulator.isRunningHardware()) {
+        state.mode = 'EMU_ROM';
+        state.ctx?.audio.stopBGM();
+      } else {
+        state.mode = 'TITLE';
+      }
+    },
+
+    update(dt: number, input: InputState) {
+      state.animTime += dt;
+      if (state.moveCooldown > 0) state.moveCooldown -= dt;
+
+      if (state.mode === 'EMU_ROM' && hwEmulator.isRunningHardware()) {
+        hwEmulator.step(dt, input);
+        return;
+      }
+
+      if (state.mode === 'TITLE') {
+        updateTitle(input);
+      } else if (state.mode === 'STARTER_SELECT') {
+        updateStarterSelect(input);
+      } else if (state.mode === 'OVERWORLD') {
+        updateOverworld(input);
+      } else if (state.mode === 'DIALOG') {
+        if (input.justPressed.a || input.justPressed.b || input.justPressed.start) {
+          state.ctx.audio.playMenuSelect();
+          state.mode = 'OVERWORLD';
+        }
+      } else if (state.mode === 'ENCOUNTER_FLASH') {
+        state.flashTimer -= dt;
+        if (state.flashTimer <= 0) {
+          state.mode = 'BATTLE';
+        }
+      } else if (state.mode === 'BATTLE') {
+        updateBattle(dt, input);
+      }
+    },
+
+    render(ctx: CanvasRenderingContext2D) {
+      if (state.mode === 'EMU_ROM' && hwEmulator.isRunningHardware()) {
+        if (hwEmulator.renderToCanvas(ctx)) {
+          return;
+        }
+      }
+
+      if (state.mode === 'TITLE') {
+        renderTitle(ctx);
+      } else if (state.mode === 'STARTER_SELECT') {
+        renderStarterSelect(ctx);
+      } else if (
+        state.mode === 'OVERWORLD' ||
+        state.mode === 'DIALOG' ||
+        state.mode === 'ENCOUNTER_FLASH'
+      ) {
+        renderOverworld(ctx);
+        if (state.mode === 'DIALOG') {
+          drawGBCBox(ctx, 4, 102, 152, 38, { borderOuter: primaryHex });
+          drawPixelText(ctx, state.dialogLine1, 10, 109, { color: '#182018', size: 4.6 });
+          drawPixelText(ctx, state.dialogLine2, 10, 121, { color: '#384838', size: 4.4 });
+        }
+        if (state.mode === 'ENCOUNTER_FLASH') {
+          const flashOn = Math.floor(state.flashTimer * 14) % 2 === 0;
+          if (flashOn) {
+            ctx.fillStyle = primaryHex;
+            ctx.fillRect(0, 0, 160, 144);
+          }
+        }
+      } else if (state.mode === 'BATTLE') {
+        renderBattle(ctx);
+      }
+    },
+
+    cleanup() {
+      saveProgress();
+    },
+  };
 }
 
-function drawTrainerSprite(ctx: CanvasRenderingContext2D, x: number, y: number, shirt: string, cap: string): void {
+function drawTrainerSprite(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  shirt: string,
+  cap: string,
+  scale = 1
+): void {
   const rows = [
     '...CCCCCC...',
     '..CCCCCCCC..',
@@ -776,107 +1413,42 @@ function drawTrainerSprite(ctx: CanvasRenderingContext2D, x: number, y: number, 
     '....KKKK....',
     '...KK..KK...',
   ];
-  drawPixelSprite(ctx, rows, {
-    C: cap,
-    S: '#f8d0a0',
-    K: '#181818',
-    B: shirt,
-  }, x, y, 1);
-}
-
-function renderBattle(ctx: CanvasRenderingContext2D): void {
-  const playerMon = state.party[state.activePartyIdx];
-  const enemyMon = state.enemy!;
-  const playerSp = getSpecies(playerMon.speciesId);
-  const enemySp = getSpecies(enemyMon.speciesId);
-
-  // Cream GBC battle background
-  ctx.fillStyle = '#f8f6e0';
-  ctx.fillRect(0, 0, 160, 144);
-
-  // Enemy status HUD (Top Left)
-  drawGBCBox(ctx, 4, 4, 96, 28, { bg: '#f0eed8' });
-  drawPixelText(ctx, `${enemySp.name}`, 8, 8, { color: '#182018', size: 4.5 });
-  drawPixelText(ctx, `Lv${enemyMon.level}`, 96, 8, { color: '#285828', size: 4.5, align: 'right' });
-  drawHealthBar(ctx, 10, 18, 84, 6, enemyMon.hp / enemyMon.maxHp);
-
-  // Enemy Monster Sprite (Top Right)
-  const enemyBob = Math.round(Math.sin(state.animTime * 5) * 1.5);
-  if (state.battlePhase === 'CATCH_ANIM') {
-    const bx = 118 + Math.round(Math.sin(state.animTime * 28) * 3);
-    ctx.fillStyle = '#e83030';
-    ctx.fillRect(bx, 22, 12, 6);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(bx, 28, 12, 6);
-    ctx.fillStyle = '#181818';
-    ctx.fillRect(bx, 27, 12, 2);
-  } else {
-    drawPixelSprite(
-      ctx,
-      enemySp.sprite,
-      { '1': enemySp.color1, '2': enemySp.color2, '3': '#181818' },
-      106,
-      10 + enemyBob,
-      3
-    );
-  }
-
-  // Player Monster Sprite (Bottom Left)
   drawPixelSprite(
     ctx,
-    playerSp.sprite,
-    { '1': playerSp.color1, '2': playerSp.color2, '3': '#181818' },
-    14,
-    54,
-    3,
-    true
+    rows,
+    {
+      C: cap,
+      S: '#f8d0a0',
+      K: '#181818',
+      B: shirt,
+    },
+    x,
+    y,
+    scale
   );
-
-  // Player Status HUD (Middle Right)
-  drawGBCBox(ctx, 62, 56, 94, 34, { bg: '#f0eed8' });
-  drawPixelText(ctx, `${playerSp.name}`, 68, 60, { color: '#182018', size: 4.5 });
-  drawPixelText(ctx, `Lv${playerMon.level}`, 152, 60, { color: '#285828', size: 4.5, align: 'right' });
-  drawHealthBar(ctx, 68, 70, 82, 6, playerMon.hp / playerMon.maxHp);
-  drawPixelText(ctx, `HP ${playerMon.hp}/${playerMon.maxHp}`, 68, 79, { color: '#182018', size: 4.5 });
-
-  // Bottom Command / Message Box
-  drawGBCBox(ctx, 2, 94, 156, 48);
-
-  if (state.battlePhase === 'MSG' || state.battlePhase === 'CATCH_ANIM') {
-    drawPixelText(ctx, state.battleMsg1, 10, 104, { color: '#182018', size: 5.5 });
-    drawPixelText(ctx, state.battleMsg2, 10, 120, { color: '#384838', size: 5 });
-  } else if (state.battlePhase === 'MENU') {
-    drawPixelText(ctx, 'What will', 8, 104, { color: '#182018', size: 4.5 });
-    drawPixelText(ctx, `${playerSp.name} do?`, 8, 116, { color: '#182018', size: 4.2 });
-
-    drawGBCBox(ctx, 72, 94, 86, 48);
-    const opts = ['FIGHT', 'PKMN', state.isWild ? `BALL(${state.balls})` : `POTN(${state.potions})`, 'RUN'];
-    opts.forEach((label, idx) => {
-      const col = idx % 2;
-      const row = Math.floor(idx / 2);
-      const ox = 80 + col * 42;
-      const oy = 104 + row * 18;
-      if (state.menuCursor === idx) {
-        drawPixelText(ctx, '>', ox - 5, oy, { color: '#d83030', size: 4.5 });
-      }
-      drawPixelText(ctx, label, ox, oy, { color: '#182018', size: 4.5 });
-    });
-  } else if (state.battlePhase === 'MOVES') {
-    playerSp.moves.forEach((mv, idx) => {
-      const oy = 101 + idx * 12;
-      if (state.moveCursor === idx) {
-        drawPixelText(ctx, '>', 8, oy, { color: '#d83030', size: 5 });
-      }
-      drawPixelText(ctx, `${mv.name} (${mv.type})`, 16, oy, { color: '#182018', size: 5 });
-    });
-  } else if (state.battlePhase === 'PARTY') {
-    state.party.slice(0, 3).forEach((pm, idx) => {
-      const sp = getSpecies(pm.speciesId);
-      const oy = 101 + idx * 12;
-      if (state.partyCursor === idx) {
-        drawPixelText(ctx, '>', 8, oy, { color: '#d83030', size: 5 });
-      }
-      drawPixelText(ctx, `${sp.name} Lv${pm.level} ${pm.hp}/${pm.maxHp}`, 16, oy, { color: '#182018', size: 5 });
-    });
-  }
 }
+
+function drawMonsterSprite(
+  ctx: CanvasRenderingContext2D,
+  sp: MonsterSpecies,
+  x: number,
+  y: number,
+  scale: number
+): void {
+  drawPixelSprite(
+    ctx,
+    sp.sprite,
+    {
+      '1': sp.color1,
+      '2': sp.color2,
+      '3': '#181818',
+    },
+    x,
+    y,
+    scale
+  );
+}
+
+export const pokemonRedCartridge = createPokemonVersionCartridge('RED');
+export const pokemonBlueCartridge = createPokemonVersionCartridge('BLUE');
+export const pocketMonstersCartridge = pokemonRedCartridge;
