@@ -498,11 +498,11 @@ export function createKirbyTiltCartridge(): GameCartridge {
 
   return {
     id: cartId,
-    title: "KIRBY TILT 'N' TUMBLE",
-    subtitle: 'Tilt-Sensor Action + 1MB GBC ROM',
-    genre: 'TILT ACTION',
+    title: 'KIRBY TILT N TUMBLE',
+    subtitle: 'Tilt & 360 D-Pad GBC',
+    genre: 'TILT ACT',
     description:
-      "Authentic 1MB Kirby Tilt 'n' Tumble GBC ROM with 360-degree D-Pad & accelerometer tilt controls + 3 save accounts!",
+      '1MB Kirby Tilt n Tumble GBC ROM with tilt & 3-slot saves!',
     cartridgeColor: '#ff6eb4',
     labelColor: '#381028',
     accentColor: accentHex,

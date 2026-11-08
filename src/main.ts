@@ -101,7 +101,12 @@ function bootstrap(): void {
       height: GBC_HEIGHT,
       audio,
       storage,
-      exitToMenu: () => systemOS.returnToCarousel(),
+      exitToMenu: () => {
+        if (window.location.search) {
+          window.history.replaceState({}, '', window.location.pathname);
+        }
+        systemOS.returnToCarousel();
+      },
       openRomFilePicker: () => romFileInput.click(),
     },
     {
@@ -237,6 +242,9 @@ function bootstrap(): void {
   // Eject / Return to Cartridge Carousel Menu
   btnEject.addEventListener('click', () => {
     setSettingsOpen(false);
+    if (window.location.search) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
     powerOnConsole();
     systemOS.returnToCarousel();
     stageContainer.focus();

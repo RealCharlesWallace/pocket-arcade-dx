@@ -18,10 +18,10 @@ import { tetrablockDxCartridge } from './tetrablock-dx';
  * It will automatically appear in the 3D Game Boy's on-screen Carousel AND the Library Dialog!
  */
 export const CARTRIDGE_REGISTRY: GameCartridge[] = [
-  pokemonRedCartridge,
-  pokemonBlueCartridge,
   froggerCartridge,
   kirbyTiltCartridge,
+  pokemonRedCartridge,
+  pokemonBlueCartridge,
   pocketBrawlCartridge,
   linksQuestCartridge,
   superPixelLandCartridge,

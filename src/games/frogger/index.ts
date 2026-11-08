@@ -554,10 +554,10 @@ export function createFroggerCartridge(): GameCartridge {
   return {
     id: cartId,
     title: 'FROGGER GBC',
-    subtitle: 'Highway & River Hop + 1MB GBC ROM',
-    genre: 'ARCADE ACTION',
+    subtitle: 'Highway & River Hop',
+    genre: 'ARCADE',
     description:
-      'Authentic Majesco 1MB Game Boy Color Frogger ROM + 3-profile account switcher and highway/river action!',
+      '1MB Majesco Frogger GBC ROM with 3-slot saves & highway action!',
     cartridgeColor: primaryHex,
     labelColor: '#102818',
     accentColor: accentHex,

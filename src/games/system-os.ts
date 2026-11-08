@@ -276,13 +276,18 @@ export class GBCSystemOS {
     ctx.strokeRect(cardX + 9.5, cardY + 17.5, 37, 33);
 
     // Title, Subtitle, Genre & High Score on Label
-    const titleSize = cart.title.length > 14 ? 4.2 : 4.6;
+    const titleSize = cart.title.length > 16 ? 3.5 : cart.title.length > 14 ? 4.2 : 4.6;
     drawPixelText(ctx, cart.title, cardX + 51, cardY + 18, { color: '#ffffff', size: titleSize });
-    drawPixelText(ctx, cart.subtitle, cardX + 51, cardY + 28, { color: cart.accentColor, size: 4 });
+    const subSize = cart.subtitle.length > 18 ? 3.5 : 4;
+    drawPixelText(ctx, cart.subtitle, cardX + 51, cardY + 28, {
+      color: cart.accentColor,
+      size: subSize,
+    });
 
+    const badgeW = Math.max(38, Math.round(cart.genre.length * 4.4 + 8));
     ctx.fillStyle = cart.accentColor;
-    ctx.fillRect(cardX + 51, cardY + 37, 38, 9);
-    drawPixelText(ctx, cart.genre, cardX + 70, cardY + 39, {
+    ctx.fillRect(cardX + 51, cardY + 37, badgeW, 9);
+    drawPixelText(ctx, cart.genre, cardX + 51 + Math.round(badgeW / 2), cardY + 39, {
       color: '#101418',
       size: 4,
       align: 'center',
