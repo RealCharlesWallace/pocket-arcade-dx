@@ -186,24 +186,26 @@ export class StageScene {
     const aspect = Math.max(0.35, this.camera.aspect);
     const isNarrow = aspect < 0.85;
 
+    this.gbc.setMobileFullBleed(isNarrow, 3.12 / aspect + 0.6);
+
     let targetX = 0;
-    let targetY = isNarrow ? 0.14 : 0.08;
-    let targetZ = isNarrow ? 0.41 + 6.0 / aspect : Math.max(8.7, 5.15 / aspect);
+    let targetY = isNarrow ? -0.02 : 0.08;
+    let targetZ = isNarrow ? 0.39 + 4.82 / aspect : Math.max(8.7, 5.15 / aspect);
 
     if (this.zoomedIn) {
       targetX = isNarrow ? 0.05 : 0.08;
-      targetY = isNarrow ? 0.92 : 1.22;
-      targetZ = isNarrow ? Math.max(3.95, 4.35 / aspect) : Math.max(3.95, 3.65 / aspect);
+      targetY = isNarrow ? 1.12 : 1.22;
+      targetZ = isNarrow ? 0.39 + 3.45 / aspect : Math.max(3.95, 3.65 / aspect);
     }
 
     if (instant) {
       this.camera.position.set(targetX, targetY, targetZ);
-      this.camera.lookAt(targetX, targetY * 0.95, 0);
+      this.camera.lookAt(targetX, targetY, 0);
     } else {
       this.camera.position.x += (targetX - this.camera.position.x) * 0.12;
       this.camera.position.y += (targetY - this.camera.position.y) * 0.12;
       this.camera.position.z += (targetZ - this.camera.position.z) * 0.12;
-      this.camera.lookAt(this.camera.position.x, this.camera.position.y * 0.95, 0);
+      this.camera.lookAt(this.camera.position.x, isNarrow ? this.camera.position.y : this.camera.position.y * 0.95, 0);
     }
   }
 
@@ -266,10 +268,12 @@ export class StageScene {
     this.syncViewportSize();
     this.updateCameraFraming(false);
 
-    // Subtle parallax tilt & idle breathing on the 3D Game Boy Color
-    const tiltAllowance = this.zoomedIn ? 0.04 : 0.22;
-    const targetRotY = this.pointerNormX * tiltAllowance + Math.sin(time * 0.8) * 0.025;
-    const targetRotX = -this.pointerNormY * (tiltAllowance * 0.75) + Math.cos(time * 0.6) * 0.018;
+    const isNarrow = this.camera.aspect < 0.85;
+    // Keep the console flush edge-to-edge on mobile portrait; allow subtle parallax tilt on desktop
+    const tiltAllowance = isNarrow ? 0 : this.zoomedIn ? 0.04 : 0.22;
+    const idleWobble = isNarrow ? 0 : 1;
+    const targetRotY = this.pointerNormX * tiltAllowance + Math.sin(time * 0.8) * 0.025 * idleWobble;
+    const targetRotX = -this.pointerNormY * (tiltAllowance * 0.75) + Math.cos(time * 0.6) * 0.018 * idleWobble;
 
     this.gbc.root.rotation.y += (targetRotY - this.gbc.root.rotation.y) * Math.min(1, dt * 8);
     this.gbc.root.rotation.x += (targetRotX - this.gbc.root.rotation.x) * Math.min(1, dt * 8);

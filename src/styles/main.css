@@ -891,20 +891,20 @@
 
   .touch-btn {
     background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.16);
+    border: 1px solid transparent;
     border-radius: 3px;
   }
 
   .touch-pill {
     background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.18);
+    border: 1px solid transparent;
     border-radius: 999px;
   }
 
   .touch-action {
     border-radius: 50%;
     background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.18);
+    border: 1px solid transparent;
   }
 
   .touch-btn:active,
@@ -916,11 +916,9 @@
   }
 
   @media (max-width: 900px), (pointer: coarse) {
-    .keyhint {
-      display: none;
-    }
+    .keyhint,
     .meta {
-      font-size: 16px;
+      display: none;
     }
     .gate {
       padding: 8px 12px;

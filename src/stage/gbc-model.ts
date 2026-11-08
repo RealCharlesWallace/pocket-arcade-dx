@@ -15,14 +15,14 @@ export class GameBoyColor3D {
   public readonly interactiveMeshes: THREE.Object3D[] = [];
   public readonly buttonMeshes = {} as Record<GBCButton, THREE.Object3D>;
   public readonly buttonSizes: Record<GBCButton, { w: number; h: number; zFront: number }> = {
-    up: { w: 0.28, h: 0.29, zFront: 0.03 },
-    down: { w: 0.28, h: 0.29, zFront: 0.03 },
-    left: { w: 0.29, h: 0.28, zFront: 0.03 },
-    right: { w: 0.29, h: 0.28, zFront: 0.03 },
-    a: { w: 0.42, h: 0.42, zFront: 0.08 },
-    b: { w: 0.42, h: 0.42, zFront: 0.08 },
-    select: { w: 0.34, h: 0.12, zFront: 0.055 },
-    start: { w: 0.34, h: 0.12, zFront: 0.055 },
+    up: { w: 0.28, h: 0.29, zFront: -0.01 },
+    down: { w: 0.28, h: 0.29, zFront: -0.01 },
+    left: { w: 0.29, h: 0.28, zFront: -0.01 },
+    right: { w: 0.29, h: 0.28, zFront: -0.01 },
+    a: { w: 0.44, h: 0.44, zFront: 0.03 },
+    b: { w: 0.44, h: 0.44, zFront: 0.03 },
+    select: { w: 0.35, h: 0.13, zFront: 0.02 },
+    start: { w: 0.35, h: 0.13, zFront: 0.02 },
   };
   public lcdMesh!: THREE.Mesh;
 
@@ -34,6 +34,7 @@ export class GameBoyColor3D {
   private screenMat: THREE.MeshBasicMaterial;
 
   private dpadGroup = new THREE.Group();
+  private bodyMesh!: THREE.Mesh;
   private btnAMesh!: THREE.Mesh;
   private btnBMesh!: THREE.Mesh;
   private btnStartMesh!: THREE.Mesh;
@@ -137,6 +138,7 @@ export class GameBoyColor3D {
     const bodyMesh = new THREE.Mesh(bodyGeo, this.shellMat);
     bodyMesh.castShadow = true;
     bodyMesh.receiveShadow = true;
+    this.bodyMesh = bodyMesh;
     this.root.add(bodyMesh);
 
     // Subtle rear battery pack bulge for 3D silhouette authenticity
@@ -461,6 +463,16 @@ export class GameBoyColor3D {
   setShellTheme(theme: ShellTheme): void {
     this.shellMat.color.setHex(theme.color);
     this.shellMat.roughness = theme.roughness;
+  }
+
+  setMobileFullBleed(enabled: boolean, minHeightWorld = 5.4): void {
+    if (!this.bodyMesh) return;
+    if (enabled) {
+      const scaleY = Math.max(1.04, minHeightWorld / 5.2);
+      this.bodyMesh.scale.set(1.05, scaleY, 1);
+    } else {
+      this.bodyMesh.scale.set(1, 1, 1);
+    }
   }
 
   setCartridgeAppearance(cartColorHex: string, accentColorHex: string): void {
