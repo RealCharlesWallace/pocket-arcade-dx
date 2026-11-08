@@ -107,6 +107,8 @@ export function customizeGen1Sram(
     pokedexOwnedCount: number;
     hours: number;
     minutes: number;
+    leadSpeciesByte?: number;
+    leadNickname?: string;
   }
 ): number[] {
   const sram = Array.from(baseSram);
@@ -141,6 +143,26 @@ export function customizeGen1Sram(
   // wPlayTimeHours (0xDA41) & wPlayTimeMinutes (0xDA43)
   sram[toSram(0xda41)] = opts.hours & 0xff;
   sram[toSram(0xda43)] = opts.minutes & 0xff;
+
+  // sPartyData starts at 0x2F2C (corresponds to wPartyDataStart = 0xD163)
+  const partyBase = 0x2f2c;
+  const partyCount = sram[partyBase] ?? 0;
+  if (opts.leadSpeciesByte && partyCount >= 1) {
+    sram[partyBase + 1] = opts.leadSpeciesByte & 0xff; // wPartySpecies[0]
+    sram[partyBase + 8] = opts.leadSpeciesByte & 0xff; // wPartyMon1Species
+    if (opts.leadNickname) {
+      const nickBytes = encodeGen1String(opts.leadNickname, 11);
+      const nickStart = partyBase + (0xd2b5 - 0xd163);
+      for (let i = 0; i < 11; i++) sram[nickStart + i] = nickBytes[i];
+    }
+  }
+  // Sync OT names for all party members to playerName
+  const otStart = partyBase + (0xd273 - 0xd163);
+  for (let m = 0; m < Math.min(6, partyCount); m++) {
+    for (let i = 0; i < 11; i++) {
+      sram[otStart + m * 11 + i] = pBytes[i];
+    }
+  }
 
   // Recompute complement checksum over 0x2598..0x3522 -> store at 0x3523
   let sum = 0;
@@ -496,11 +518,14 @@ export class GBHardwareEmulator {
     // Check if SRAM already has a valid in-game save (e.g. player saved via START -> SAVE)
     const existingSramSummary = parseGen1SramSummary(rawSram);
 
-    // Also check if live WRAM has an active player name at 0xD158 (not default "NINTEN")
+    // Only sync live WRAM into SRAM when the player is actively inside a loaded overworld map
+    // (wCurMapHeight at 0xD368 > 0 and wCurMapWidth at 0xD369 > 0), never during MainMenu or OakSpeech!
     const wramName = decodeGen1String(this.gb.memory, 0xd158, 11);
     const saveStatus = this.gb.memory[0xd088] ?? 0;
+    const mapHeight = this.gb.memory[0xd368] ?? 0;
+    const mapWidth = this.gb.memory[0xd369] ?? 0;
 
-    if (wramName && wramName !== 'NINTEN' && saveStatus >= 1) {
+    if (wramName && wramName !== 'NINTEN' && saveStatus >= 1 && mapHeight > 0 && mapWidth > 0) {
       const sram = rawSram.length >= 32768 ? rawSram.slice() : new Array<number>(32768).fill(0);
       const copyToSram = (wramStart: number, wramEnd: number, sramStart: number) => {
         for (let i = 0; i < wramEnd - wramStart; i++) {

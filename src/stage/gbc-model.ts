@@ -33,17 +33,27 @@ export class GameBoyColor3D {
   private ledLight: THREE.PointLight;
   private screenMat: THREE.MeshBasicMaterial;
 
-  private dpadGroup = new THREE.Group();
+  public readonly dpadGroup = new THREE.Group();
+  private dpadArmGroups: Partial<Record<GBCButton, THREE.Group>> = {};
+  private dpadArmMats: Partial<Record<GBCButton, THREE.MeshPhysicalMaterial>> = {};
   private dpadArrowMats: Partial<Record<GBCButton, THREE.MeshStandardMaterial>> = {};
+  private dpadSlideX = 0;
+  private dpadSlideY = 0;
   private bodyMesh!: THREE.Mesh;
-  private btnAMesh!: THREE.Mesh;
-  private btnBMesh!: THREE.Mesh;
+  private btnAGroup = new THREE.Group();
+  private btnBGroup = new THREE.Group();
   private btnStartMesh!: THREE.Mesh;
   private btnSelectMesh!: THREE.Mesh;
   private matA!: THREE.MeshPhysicalMaterial;
   private matB!: THREE.MeshPhysicalMaterial;
+  private matABody!: THREE.MeshPhysicalMaterial;
+  private matBBody!: THREE.MeshPhysicalMaterial;
   private matSelect!: THREE.MeshStandardMaterial;
   private matStart!: THREE.MeshStandardMaterial;
+  private btnATiltX = 0;
+  private btnATiltY = 0;
+  private btnBTiltX = 0;
+  private btnBTiltY = 0;
   private powerSwitchMesh!: THREE.Mesh;
 
   private buttonTargets: Record<GBCButton, number> = {
@@ -414,104 +424,247 @@ export class GameBoyColor3D {
     this.root.add(this.ledLight);
   }
 
-  private createButtonLabelTexture(letter: string, bgHex: string, fgHex = '#d8dce2'): THREE.CanvasTexture {
+  private createButtonCapTextures(letter: string): {
+    colorMap: THREE.CanvasTexture;
+    bumpMap: THREE.CanvasTexture;
+  } {
     const c = document.createElement('canvas');
-    c.width = 128;
-    c.height = 128;
+    c.width = 256;
+    c.height = 256;
     const ctx = c.getContext('2d')!;
-    ctx.fillStyle = bgHex;
-    ctx.fillRect(0, 0, 128, 128);
-    ctx.fillStyle = fgHex;
-    ctx.font = 'bold 68px system-ui, sans-serif';
+
+    // 3D Spherical Dome Shading Gradient (top-left specular hotspot -> deep charcoal rim)
+    const domeGrad = ctx.createRadialGradient(88, 82, 14, 128, 128, 124);
+    domeGrad.addColorStop(0, '#464d5a');
+    domeGrad.addColorStop(0.32, '#282d35');
+    domeGrad.addColorStop(0.75, '#171a20');
+    domeGrad.addColorStop(1, '#0d0f13');
+    ctx.fillStyle = domeGrad;
+    ctx.fillRect(0, 0, 256, 256);
+
+    // Outer 3D Chamfer Specular Rim Ring
+    ctx.lineWidth = 7;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+    ctx.beginPath();
+    ctx.arc(128, 128, 112, Math.PI * 0.9, Math.PI * 1.85);
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.65)';
+    ctx.beginPath();
+    ctx.arc(128, 128, 112, Math.PI * 1.9, Math.PI * 2.85);
+    ctx.stroke();
+
+    // Recessed Molded Inner Ring around Letter
+    ctx.lineWidth = 3.5;
+    ctx.strokeStyle = 'rgba(10, 12, 16, 0.78)';
+    ctx.beginPath();
+    ctx.arc(128, 128, 88, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+    ctx.beginPath();
+    ctx.arc(128, 128, 85, Math.PI * 0.85, Math.PI * 1.85);
+    ctx.stroke();
+
+    // Precision Dead-Centered 3D Molded Letter ('A' / 'B') with bevel shadow & specular top edge
+    ctx.font = '900 132px system-ui, -apple-system, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(letter, 64, 68);
-    const tex = new THREE.CanvasTexture(c);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    return tex;
+
+    // Deep recessed groove shadow
+    ctx.fillStyle = '#080a0d';
+    ctx.fillText(letter, 125, 131);
+
+    // Specular bottom-right catch-light inside molded letter
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.42)';
+    ctx.fillText(letter, 130, 135);
+
+    // Crisp centered embossed letter face
+    ctx.fillStyle = '#e8edf5';
+    ctx.fillText(letter, 128, 133);
+
+    const colorMap = new THREE.CanvasTexture(c);
+    colorMap.colorSpace = THREE.SRGBColorSpace;
+
+    // Matching height/bump map so 3D directional lighting interacts with the dome & molded letter
+    const bc = document.createElement('canvas');
+    bc.width = 256;
+    bc.height = 256;
+    const bctx = bc.getContext('2d')!;
+    const bumpGrad = bctx.createRadialGradient(128, 128, 10, 128, 128, 124);
+    bumpGrad.addColorStop(0, '#ffffff');
+    bumpGrad.addColorStop(0.72, '#b8b8b8');
+    bumpGrad.addColorStop(1, '#303030');
+    bctx.fillStyle = bumpGrad;
+    bctx.fillRect(0, 0, 256, 256);
+
+    bctx.lineWidth = 6;
+    bctx.strokeStyle = '#505050';
+    bctx.beginPath();
+    bctx.arc(128, 128, 88, 0, Math.PI * 2);
+    bctx.stroke();
+
+    bctx.font = '900 132px system-ui, -apple-system, sans-serif';
+    bctx.textAlign = 'center';
+    bctx.textBaseline = 'middle';
+    bctx.fillStyle = '#383838';
+    bctx.fillText(letter, 128, 133);
+
+    const bumpMap = new THREE.CanvasTexture(bc);
+    return { colorMap, bumpMap };
   }
 
   private buildControls(): void {
     const darkPlasticMat = new THREE.MeshPhysicalMaterial({
       color: 0x1c1f24,
-      roughness: 0.30,
-      metalness: 0.12,
-      clearcoat: 0.35,
-      clearcoatRoughness: 0.28,
+      roughness: 0.28,
+      metalness: 0.14,
+      clearcoat: 0.45,
+      clearcoatRoughness: 0.22,
     });
 
     const wellMat = new THREE.MeshStandardMaterial({
-      color: 0x0e1013,
-      roughness: 0.75,
+      color: 0x090b0e,
+      roughness: 0.82,
     });
 
     // --- ERGONOMICALLY LOWERED D-PAD (y = -0.96) ---
-    // Recessed shadow well on shell under the D-Pad
+    // Deep recessed cross shadow well + beveled shell cutout on shell under the D-Pad
+    const dpadWellOuterH = new THREE.Mesh(new THREE.PlaneGeometry(1.04, 0.42), this.shellMat);
+    const dpadWellOuterV = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 1.04), this.shellMat);
+    dpadWellOuterH.position.set(-0.80, -0.96, 0.432);
+    dpadWellOuterV.position.set(-0.80, -0.96, 0.432);
+    this.root.add(dpadWellOuterH, dpadWellOuterV);
+
     const dpadWellH = new THREE.Mesh(new THREE.PlaneGeometry(0.98, 0.36), wellMat);
     const dpadWellV = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.98), wellMat);
-    dpadWellH.position.set(-0.80, -0.96, 0.433);
-    dpadWellV.position.set(-0.80, -0.96, 0.433);
+    dpadWellH.position.set(-0.80, -0.96, 0.434);
+    dpadWellV.position.set(-0.80, -0.96, 0.434);
     this.root.add(dpadWellH, dpadWellV);
 
-    this.dpadGroup.position.set(-0.80, -0.96, 0.46);
+    this.dpadGroup.position.set(-0.80, -0.96, 0.465);
 
-    // Sculpted 3D D-Pad cross with beveled top layer
-    const hBarGeo = new THREE.BoxGeometry(0.92, 0.30, 0.18);
-    const vBarGeo = new THREE.BoxGeometry(0.30, 0.92, 0.18);
-    const hBarTopGeo = new THREE.BoxGeometry(0.88, 0.26, 0.04);
-    const vBarTopGeo = new THREE.BoxGeometry(0.26, 0.88, 0.04);
-    const hBar = new THREE.Mesh(hBarGeo, darkPlasticMat);
-    const vBar = new THREE.Mesh(vBarGeo, darkPlasticMat);
-    const hBarTop = new THREE.Mesh(hBarTopGeo, darkPlasticMat);
-    const vBarTop = new THREE.Mesh(vBarTopGeo, darkPlasticMat);
-    hBarTop.position.z = 0.09;
-    vBarTop.position.z = 0.09;
-    this.dpadGroup.add(hBar, vBar, hBarTop, vBarTop);
+    // Central pivot block + circular concave thumb pivot dip (unified with arm bevel height)
+    const centerMat = new THREE.MeshPhysicalMaterial({
+      color: new THREE.Color(0.12, 0.137, 0.16),
+      roughness: 0.26,
+      metalness: 0.14,
+      clearcoat: 0.48,
+      clearcoatRoughness: 0.20,
+    });
+    const centerBlock = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.30, 0.18), centerMat);
+    const centerTop = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.26, 0.048), centerMat);
+    centerTop.position.z = 0.092;
+    this.dpadGroup.add(centerBlock, centerTop);
 
-    // Concave center pivot dip
-    const centerDipGeo = new THREE.CylinderGeometry(0.09, 0.09, 0.05, 20);
+    const centerDipGeo = new THREE.CylinderGeometry(0.088, 0.088, 0.048, 28);
     centerDipGeo.rotateX(Math.PI / 2);
     const centerDip = new THREE.Mesh(
       centerDipGeo,
-      new THREE.MeshStandardMaterial({ color: 0x131519, roughness: 0.45 })
+      new THREE.MeshStandardMaterial({ color: 0x16191f, roughness: 0.38, metalness: 0.14 })
     );
     centerDip.position.z = 0.095;
     this.dpadGroup.add(centerDip);
 
-    // 3D Raised Molded Directional Triangles on the D-Pad arms (each with independent hover/press glow)
-    const makeArrowMesh = (dir: GBCButton, rotZ: number, x: number, y: number) => {
+    // 4 Articulated 3D Directional Arms (each arm physically depresses & darkens into the recessed well when pressed)
+    const buildDpadArm = (
+      dir: GBCButton,
+      armCenterX: number,
+      armCenterY: number,
+      isVertical: boolean,
+      arrowRotZ: number
+    ) => {
+      const armGroup = new THREE.Group();
+      armGroup.position.set(armCenterX, armCenterY, 0);
+
+      const armMat = new THREE.MeshPhysicalMaterial({
+        color: 0x1f2329,
+        roughness: 0.26,
+        metalness: 0.14,
+        clearcoat: 0.48,
+        clearcoatRoughness: 0.20,
+      });
+      this.dpadArmMats[dir] = armMat;
+
+      const baseW = isVertical ? 0.30 : 0.33;
+      const baseH = isVertical ? 0.33 : 0.30;
+      const topW = isVertical ? 0.255 : 0.295;
+      const topH = isVertical ? 0.295 : 0.255;
+
+      const armBase = new THREE.Mesh(new THREE.BoxGeometry(baseW, baseH, 0.18), armMat);
+      const armBevelTop = new THREE.Mesh(new THREE.BoxGeometry(topW, topH, 0.048), armMat);
+      armBevelTop.position.z = 0.092;
+      armGroup.add(armBase, armBevelTop);
+
+      // Molded 3D tactile grip ridges on each arm
+      const ridgeMat = new THREE.MeshStandardMaterial({
+        color: 0x2d333d,
+        roughness: 0.32,
+        metalness: 0.16,
+      });
+      const ridgeGeo = isVertical
+        ? new THREE.BoxGeometry(0.16, 0.022, 0.018)
+        : new THREE.BoxGeometry(0.022, 0.16, 0.018);
+      const r1 = new THREE.Mesh(ridgeGeo, ridgeMat);
+      const r2 = new THREE.Mesh(ridgeGeo, ridgeMat);
+      const offsetSign = dir === 'up' || dir === 'right' ? 1 : -1;
+      if (isVertical) {
+        r1.position.set(0, -offsetSign * 0.06, 0.118);
+        r2.position.set(0, -offsetSign * 0.10, 0.118);
+      } else {
+        r1.position.set(-offsetSign * 0.06, 0, 0.118);
+        r2.position.set(-offsetSign * 0.10, 0, 0.118);
+      }
+      armGroup.add(r1, r2);
+
+      // 3D Raised Molded Directional Triangle Arrow
       const arrowMat = new THREE.MeshStandardMaterial({
-        color: 0x323842,
-        roughness: 0.25,
-        metalness: 0.15,
+        color: 0x3b424f,
+        roughness: 0.24,
+        metalness: 0.18,
       });
       this.dpadArrowMats[dir] = arrowMat;
       const s = new THREE.Shape();
-      s.moveTo(0, 0.075);
-      s.lineTo(-0.065, -0.045);
-      s.lineTo(0.065, -0.045);
+      s.moveTo(0, 0.078);
+      s.lineTo(-0.068, -0.042);
+      s.lineTo(0.068, -0.042);
       s.closePath();
-      const g = new THREE.ExtrudeGeometry(s, { depth: 0.024, bevelEnabled: false });
-      const m = new THREE.Mesh(g, arrowMat);
-      m.rotation.z = rotZ;
-      m.position.set(x, y, 0.105);
-      this.dpadGroup.add(m);
+      const g = new THREE.ExtrudeGeometry(s, {
+        depth: 0.026,
+        bevelEnabled: true,
+        bevelThickness: 0.006,
+        bevelSize: 0.005,
+        bevelSegments: 2,
+      });
+      const arrowMesh = new THREE.Mesh(g, arrowMat);
+      arrowMesh.rotation.z = arrowRotZ;
+      arrowMesh.position.set(
+        isVertical ? 0 : offsetSign * 0.025,
+        isVertical ? offsetSign * 0.025 : 0,
+        0.112
+      );
+      armGroup.add(arrowMesh);
+
+      this.dpadArmGroups[dir] = armGroup;
+      this.dpadGroup.add(armGroup);
     };
-    makeArrowMesh('up', 0, 0, 0.30);               // Up
-    makeArrowMesh('down', Math.PI, 0, -0.30);      // Down
-    makeArrowMesh('left', Math.PI / 2, -0.30, 0);  // Left
-    makeArrowMesh('right', -Math.PI / 2, 0.30, 0); // Right
+
+    buildDpadArm('up', 0, 0.30, true, 0);
+    buildDpadArm('down', 0, -0.30, true, Math.PI);
+    buildDpadArm('left', -0.30, 0, false, Math.PI / 2);
+    buildDpadArm('right', 0.30, 0, false, -Math.PI / 2);
 
     // 4 directional raycast hit boxes on the D-Pad arms
     const hitMat = new THREE.MeshBasicMaterial({ visible: false });
     const dirs: Array<{ dir: GBCButton; x: number; y: number; w: number; h: number }> = [
-      { dir: 'up', x: 0, y: 0.30, w: 0.30, h: 0.31 },
-      { dir: 'down', x: 0, y: -0.30, w: 0.30, h: 0.31 },
-      { dir: 'left', x: -0.30, y: 0, w: 0.31, h: 0.30 },
-      { dir: 'right', x: 0.30, y: 0, w: 0.31, h: 0.30 },
+      { dir: 'up', x: 0, y: 0.30, w: 0.32, h: 0.34 },
+      { dir: 'down', x: 0, y: -0.30, w: 0.32, h: 0.34 },
+      { dir: 'left', x: -0.30, y: 0, w: 0.34, h: 0.32 },
+      { dir: 'right', x: 0.30, y: 0, w: 0.34, h: 0.32 },
     ];
     for (const d of dirs) {
-      const hitGeo = new THREE.BoxGeometry(d.w, d.h, 0.26);
+      const hitGeo = new THREE.BoxGeometry(d.w, d.h, 0.28);
       const hitMesh = new THREE.Mesh(hitGeo, hitMat);
       hitMesh.position.set(d.x, d.y, 0.06);
       hitMesh.userData = { control: d.dir };
@@ -522,47 +675,114 @@ export class GameBoyColor3D {
 
     this.root.add(this.dpadGroup);
 
-    // --- ERGONOMICALLY LOWERED A & B BUTTONS (y = -0.80 and -1.08) ---
-    // Recessed circular button wells on shell face
-    const wellGeo = new THREE.RingGeometry(0.21, 0.255, 32);
-    const wellA = new THREE.Mesh(wellGeo, wellMat);
-    wellA.position.set(0.94, -0.80, 0.434);
-    const wellB = new THREE.Mesh(wellGeo, wellMat);
-    wellB.position.set(0.38, -1.08, 0.434);
-    this.root.add(wellA, wellB);
+    // --- SCULPTED 4D DOMED A & B ACTION BUTTONS (y = -0.80 and -1.08) ---
+    const buildActionButton = (
+      btn: 'a' | 'b',
+      letter: 'A' | 'B',
+      x: number,
+      y: number,
+      group: THREE.Group
+    ) => {
+      // 1. Deep 3D Recessed Socket Well + Raised Shell Bevel Collar
+      const outerLipGeo = new THREE.TorusGeometry(0.258, 0.022, 16, 40);
+      const outerLip = new THREE.Mesh(outerLipGeo, this.shellMat);
+      outerLip.position.set(x, y, 0.434);
+      outerLip.scale.set(1, 1, 0.65);
 
-    const btnGeo = new THREE.CylinderGeometry(0.22, 0.235, 0.20, 32);
-    btnGeo.rotateX(Math.PI / 2);
-    btnGeo.rotateZ(Math.PI / 2);
+      const socketFloor = new THREE.Mesh(new THREE.CircleGeometry(0.254, 36), wellMat);
+      socketFloor.position.set(x, y, 0.434);
 
-    this.matA = new THREE.MeshPhysicalMaterial({
-      map: this.createButtonLabelTexture('A', '#1d2026', '#d8dce2'),
-      roughness: 0.20,
-      metalness: 0.14,
-      clearcoat: 0.65,
-      clearcoatRoughness: 0.15,
-    });
-    this.matB = new THREE.MeshPhysicalMaterial({
-      map: this.createButtonLabelTexture('B', '#1d2026', '#d8dce2'),
-      roughness: 0.20,
-      metalness: 0.14,
-      clearcoat: 0.65,
-      clearcoatRoughness: 0.15,
-    });
+      const socketWallGeo = new THREE.RingGeometry(0.212, 0.256, 36);
+      const socketWallMat = new THREE.MeshStandardMaterial({
+        color: 0x07080a,
+        roughness: 0.9,
+      });
+      const socketWall = new THREE.Mesh(socketWallGeo, socketWallMat);
+      socketWall.position.set(x, y, 0.436);
+      this.root.add(outerLip, socketFloor, socketWall);
 
-    this.btnAMesh = new THREE.Mesh(btnGeo, this.matA);
-    this.btnAMesh.position.set(0.94, -0.80, 0.46);
-    this.btnAMesh.userData = { control: 'a' };
-    this.interactiveMeshes.push(this.btnAMesh);
-    this.buttonMeshes.a = this.btnAMesh;
-    this.root.add(this.btnAMesh);
+      // 2. Articulated 3D/4D Button Plunger Group (Centered at (x, y))
+      group.position.set(x, y, 0.468);
 
-    this.btnBMesh = new THREE.Mesh(btnGeo, this.matB);
-    this.btnBMesh.position.set(0.38, -1.08, 0.46);
-    this.btnBMesh.userData = { control: 'b' };
-    this.interactiveMeshes.push(this.btnBMesh);
-    this.buttonMeshes.b = this.btnBMesh;
-    this.root.add(this.btnBMesh);
+      const bodyMat = new THREE.MeshPhysicalMaterial({
+        color: 0x20242c,
+        roughness: 0.20,
+        metalness: 0.16,
+        clearcoat: 0.85,
+        clearcoatRoughness: 0.12,
+      });
+      if (btn === 'a') this.matABody = bodyMat;
+      else this.matBBody = bodyMat;
+
+      // Cylindrical Plunger Barrel (slides deep into the recessed well)
+      const barrelGeo = new THREE.CylinderGeometry(0.228, 0.242, 0.18, 40);
+      barrelGeo.rotateX(Math.PI / 2);
+      const barrelMesh = new THREE.Mesh(barrelGeo, bodyMat);
+      barrelMesh.position.z = -0.024;
+      group.add(barrelMesh);
+
+      // 3D Rounded Bevel Shoulder Torus (catches 360-degree specular rim lighting)
+      const shoulderGeo = new THREE.TorusGeometry(0.196, 0.032, 20, 44);
+      const shoulderMesh = new THREE.Mesh(shoulderGeo, bodyMat);
+      shoulderMesh.position.z = 0.048;
+      shoulderMesh.scale.set(1, 1, 0.85);
+      group.add(shoulderMesh);
+
+      // Convex 3D Domed Crown Cap
+      const domeGeo = new THREE.SphereGeometry(0.220, 36, 20, 0, Math.PI * 2, 0, Math.PI * 0.42);
+      domeGeo.rotateX(Math.PI / 2);
+      const domeMesh = new THREE.Mesh(domeGeo, bodyMat);
+      domeMesh.scale.set(1, 1, 0.48);
+      domeMesh.position.z = 0.008;
+      group.add(domeMesh);
+
+      // Precision Dead-Centered Upright 'A' / 'B' Molded Cap Face (with bump relief)
+      const { colorMap, bumpMap } = this.createButtonCapTextures(letter);
+      const capMat = new THREE.MeshPhysicalMaterial({
+        map: colorMap,
+        bumpMap,
+        bumpScale: 0.026,
+        roughness: 0.18,
+        metalness: 0.14,
+        clearcoat: 0.90,
+        clearcoatRoughness: 0.10,
+      });
+      if (btn === 'a') this.matA = capMat;
+      else this.matB = capMat;
+
+      const capFaceGeo = new THREE.CircleGeometry(0.194, 40);
+      const capFaceMesh = new THREE.Mesh(capFaceGeo, capMat);
+      capFaceMesh.position.z = 0.114;
+      group.add(capFaceMesh);
+
+      // 3D Specular Crown Rim Ring around the letter face
+      const crownRimGeo = new THREE.TorusGeometry(0.192, 0.011, 14, 40);
+      const crownRimMat = new THREE.MeshPhysicalMaterial({
+        color: 0x363d4a,
+        roughness: 0.16,
+        metalness: 0.24,
+        clearcoat: 0.95,
+      });
+      const crownRimMesh = new THREE.Mesh(crownRimGeo, crownRimMat);
+      crownRimMesh.position.z = 0.110;
+      crownRimMesh.scale.set(1, 1, 0.6);
+      group.add(crownRimMesh);
+
+      // Raycast hit cylinder covering the full 3D button plunger
+      const hitGeo = new THREE.CylinderGeometry(0.25, 0.25, 0.26, 28);
+      hitGeo.rotateX(Math.PI / 2);
+      const hitMesh = new THREE.Mesh(hitGeo, hitMat);
+      hitMesh.position.z = 0.04;
+      hitMesh.userData = { control: btn };
+      group.add(hitMesh);
+
+      this.interactiveMeshes.push(hitMesh);
+      this.buttonMeshes[btn] = group;
+      this.root.add(group);
+    };
+
+    buildActionButton('a', 'A', 0.94, -0.80, this.btnAGroup);
+    buildActionButton('b', 'B', 0.38, -1.08, this.btnBGroup);
 
     // --- ERGONOMICALLY LOWERED SELECT & START RUBBER PILLS (y = -1.92) ---
     // Recessed stadium wells under SELECT & START
@@ -718,18 +938,41 @@ export class GameBoyColor3D {
     this.buttonHover[btn] = hovered ? 1 : 0;
   }
 
+  setDpadSlideVector(nx: number, ny: number): void {
+    this.dpadSlideX = Math.max(-1, Math.min(1, nx));
+    this.dpadSlideY = Math.max(-1, Math.min(1, ny));
+  }
+
+  setActionButtonTilt(btn: 'a' | 'b', tx: number, ty: number): void {
+    const cx = Math.max(-1, Math.min(1, tx));
+    const cy = Math.max(-1, Math.min(1, ty));
+    if (btn === 'a') {
+      this.btnATiltX = cy;
+      this.btnATiltY = cx;
+    } else {
+      this.btnBTiltX = cy;
+      this.btnBTiltY = cx;
+    }
+  }
+
   update(dt: number): void {
-    const speed = Math.min(1, dt * 22);
+    const speed = Math.min(1, dt * 24);
     (Object.keys(this.buttonTargets) as GBCButton[]).forEach((k) => {
       this.buttonCurrent[k] += (this.buttonTargets[k] - this.buttonCurrent[k]) * speed;
       this.hoverCurrent[k] += (this.buttonHover[k] - this.hoverCurrent[k]) * speed;
     });
 
-    // D-Pad physical rocker tilt + hover tilt + arrow emissive feedback
-    const pressTiltX = (this.buttonCurrent.down - this.buttonCurrent.up) * 0.25;
-    const pressTiltY = (this.buttonCurrent.right - this.buttonCurrent.left) * 0.25;
-    const hoverTiltX = (this.hoverCurrent.down - this.hoverCurrent.up) * 0.09;
-    const hoverTiltY = (this.hoverCurrent.right - this.hoverCurrent.left) * 0.09;
+    // D-Pad 3D directional rocker + continuous 360-degree angle sliding + per-arm physical depression
+    const discreteDirX = this.buttonCurrent.right - this.buttonCurrent.left;
+    const discreteDirY = this.buttonCurrent.down - this.buttonCurrent.up;
+    const hasSlide = Math.hypot(this.dpadSlideX, this.dpadSlideY) > 0.05;
+    const effDirX = hasSlide ? this.dpadSlideX : discreteDirX;
+    const effDirY = hasSlide ? this.dpadSlideY : discreteDirY;
+
+    const pressTiltX = effDirY * 0.24;
+    const pressTiltY = effDirX * 0.24;
+    const hoverTiltX = (this.hoverCurrent.down - this.hoverCurrent.up) * 0.07;
+    const hoverTiltY = (this.hoverCurrent.right - this.hoverCurrent.left) * 0.07;
     this.dpadGroup.rotation.x = pressTiltX + hoverTiltX;
     this.dpadGroup.rotation.y = pressTiltY + hoverTiltY;
 
@@ -737,7 +980,8 @@ export class GameBoyColor3D {
       this.buttonCurrent.up,
       this.buttonCurrent.down,
       this.buttonCurrent.left,
-      this.buttonCurrent.right
+      this.buttonCurrent.right,
+      Math.min(1, Math.hypot(this.dpadSlideX, this.dpadSlideY))
     );
     const dpadHover = Math.max(
       this.hoverCurrent.up,
@@ -745,44 +989,80 @@ export class GameBoyColor3D {
       this.hoverCurrent.left,
       this.hoverCurrent.right
     );
-    this.dpadGroup.position.z = 0.46 + dpadHover * 0.022 - dpadDepress * 0.048;
+    this.dpadGroup.position.x = -0.80 + effDirX * 0.022;
+    this.dpadGroup.position.y = -0.96 - effDirY * 0.022;
+    this.dpadGroup.position.z = 0.476 + dpadHover * 0.012 - dpadDepress * 0.020;
+
+    const oppMap: Record<'up' | 'down' | 'left' | 'right', 'up' | 'down' | 'left' | 'right'> = {
+      up: 'down',
+      down: 'up',
+      left: 'right',
+      right: 'left',
+    };
 
     for (const dir of ['up', 'down', 'left', 'right'] as const) {
-      const mat = this.dpadArrowMats[dir];
-      if (!mat) continue;
+      const armGroup = this.dpadArmGroups[dir];
+      const armMat = this.dpadArmMats[dir];
+      const arrowMat = this.dpadArrowMats[dir];
       const p = this.buttonCurrent[dir];
+      const opp = this.buttonCurrent[oppMap[dir]];
       const h = this.hoverCurrent[dir];
-      if (p > 0.05) {
-        mat.emissive.setHex(0x58f888);
-        mat.emissiveIntensity = p * 0.9;
-      } else if (h > 0.05) {
-        mat.emissive.setHex(0x46b8b8);
-        mat.emissiveIntensity = h * 0.55;
-      } else {
-        mat.emissive.setHex(0x000000);
-        mat.emissiveIntensity = 0;
+
+      if (armGroup) {
+        // Pressed arm physically sinks into the recessed well while staying proud of the well floor (z > 0.434)
+        armGroup.position.z = -p * 0.018 + opp * 0.014 + h * 0.006;
+        armGroup.scale.set(1 - p * 0.03, 1 - p * 0.03, 1 - p * 0.16);
+      }
+      if (armMat) {
+        // Natural shadow darkening when depressed into the well, top-light catch when lifted
+        const shade = Math.max(0.56, Math.min(1.32, 1.0 - p * 0.40 + opp * 0.25 + h * 0.12));
+        armMat.color.setRGB(0.12 * shade, 0.137 * shade, 0.16 * shade);
+      }
+      if (arrowMat) {
+        const arrowShade = Math.max(0.50, Math.min(1.38, 1.0 - p * 0.44 + opp * 0.28 + h * 0.15));
+        arrowMat.color.setRGB(0.23 * arrowShade, 0.26 * arrowShade, 0.31 * arrowShade);
+        arrowMat.emissive.setHex(0x000000);
+        arrowMat.emissiveIntensity = 0;
       }
     }
 
-    // A / B physical hover lift, press depression, scale & emissive rim
-    this.btnAMesh.position.z = 0.46 + this.hoverCurrent.a * 0.032 - this.buttonCurrent.a * 0.075;
-    this.btnBMesh.position.z = 0.46 + this.hoverCurrent.b * 0.032 - this.buttonCurrent.b * 0.075;
-    const scaleA = 1 + this.hoverCurrent.a * 0.04 - this.buttonCurrent.a * 0.04;
-    const scaleB = 1 + this.hoverCurrent.b * 0.04 - this.buttonCurrent.b * 0.04;
-    this.btnAMesh.scale.set(scaleA, scaleA, 1);
-    this.btnBMesh.scale.set(scaleB, scaleB, 1);
-    this.matA.emissive.setHex(this.buttonCurrent.a > 0.05 ? 0x287848 : 0x1b4f4f);
-    this.matA.emissiveIntensity = Math.max(this.buttonCurrent.a * 0.65, this.hoverCurrent.a * 0.35);
-    this.matB.emissive.setHex(this.buttonCurrent.b > 0.05 ? 0x287848 : 0x1b4f4f);
-    this.matB.emissiveIntensity = Math.max(this.buttonCurrent.b * 0.65, this.hoverCurrent.b * 0.35);
+    // 4D Domed A & B Plunger Buttons: deep Z-plunge + 3D socket tilt + natural occlusion shading
+    const pA = this.buttonCurrent.a;
+    const hA = this.hoverCurrent.a;
+    this.btnAGroup.position.z = 0.468 + hA * 0.018 - pA * 0.088;
+    this.btnAGroup.rotation.x = pA * (0.14 + this.btnATiltX * 0.22) - hA * 0.05;
+    this.btnAGroup.rotation.y = pA * (-0.12 + this.btnATiltY * 0.22) + hA * 0.04;
+    const scaleA = 1 + hA * 0.025 - pA * 0.032;
+    this.btnAGroup.scale.set(scaleA, scaleA, 1 - pA * 0.14);
+    const shadeA = 1 - pA * 0.26 + hA * 0.08;
+    this.matA.color.setRGB(shadeA, shadeA, shadeA);
+    this.matABody.color.setRGB(0.125 * shadeA, 0.14 * shadeA, 0.172 * shadeA);
 
-    // Select / Start rubber pill hover lift & press squish
-    this.btnSelectMesh.position.z = 0.445 + this.hoverCurrent.select * 0.022 - this.buttonCurrent.select * 0.048;
-    this.btnStartMesh.position.z = 0.445 + this.hoverCurrent.start * 0.022 - this.buttonCurrent.start * 0.048;
-    this.matSelect.emissive.setHex(this.buttonCurrent.select > 0.05 ? 0x287848 : 0x1b4f4f);
-    this.matSelect.emissiveIntensity = Math.max(this.buttonCurrent.select * 0.6, this.hoverCurrent.select * 0.35);
-    this.matStart.emissive.setHex(this.buttonCurrent.start > 0.05 ? 0x287848 : 0x1b4f4f);
-    this.matStart.emissiveIntensity = Math.max(this.buttonCurrent.start * 0.6, this.hoverCurrent.start * 0.35);
+    const pB = this.buttonCurrent.b;
+    const hB = this.hoverCurrent.b;
+    this.btnBGroup.position.z = 0.468 + hB * 0.018 - pB * 0.088;
+    this.btnBGroup.rotation.x = pB * (0.14 + this.btnBTiltX * 0.22) - hB * 0.05;
+    this.btnBGroup.rotation.y = pB * (-0.12 + this.btnBTiltY * 0.22) + hB * 0.04;
+    const scaleB = 1 + hB * 0.025 - pB * 0.032;
+    this.btnBGroup.scale.set(scaleB, scaleB, 1 - pB * 0.14);
+    const shadeB = 1 - pB * 0.26 + hB * 0.08;
+    this.matB.color.setRGB(shadeB, shadeB, shadeB);
+    this.matBBody.color.setRGB(0.125 * shadeB, 0.14 * shadeB, 0.172 * shadeB);
+
+    // Select / Start rubber pill tactile squish into recessed stadium wells
+    const pSel = this.buttonCurrent.select;
+    const hSel = this.hoverCurrent.select;
+    this.btnSelectMesh.position.z = 0.445 + hSel * 0.014 - pSel * 0.052;
+    this.btnSelectMesh.scale.set(1, 1, 1 - pSel * 0.30);
+    const shadeSel = 1 - pSel * 0.35 + hSel * 0.10;
+    this.matSelect.color.setRGB(0.172 * shadeSel, 0.188 * shadeSel, 0.212 * shadeSel);
+
+    const pStart = this.buttonCurrent.start;
+    const hStart = this.hoverCurrent.start;
+    this.btnStartMesh.position.z = 0.445 + hStart * 0.014 - pStart * 0.052;
+    this.btnStartMesh.scale.set(1, 1, 1 - pStart * 0.30);
+    const shadeStart = 1 - pStart * 0.35 + hStart * 0.10;
+    this.matStart.color.setRGB(0.172 * shadeStart, 0.188 * shadeStart, 0.212 * shadeStart);
 
     // Power switch position
     const targetSwitchY = this.isPowered ? 1.62 : 1.48;

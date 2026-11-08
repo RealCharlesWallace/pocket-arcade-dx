@@ -88,23 +88,7 @@ export class InputManager {
   private bindTouchOverlayButtons(): void {
     const buttons = document.querySelectorAll<HTMLElement>('[data-btn]');
     buttons.forEach((el) => {
-      const btn = el.dataset.btn as GBCButton | undefined;
-      if (!btn) return;
-
-      const press = (e: Event) => {
-        e.preventDefault();
-        this.notifyAnyInput();
-        this.setVirtualButton(btn, true);
-      };
-      const release = (e: Event) => {
-        e.preventDefault();
-        this.setVirtualButton(btn, false);
-      };
-
-      el.addEventListener('pointerdown', press);
-      el.addEventListener('pointerup', release);
-      el.addEventListener('pointerleave', release);
-      el.addEventListener('pointercancel', release);
+      el.addEventListener('contextmenu', (e) => e.preventDefault());
     });
   }
 

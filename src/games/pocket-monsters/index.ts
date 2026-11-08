@@ -421,24 +421,29 @@ const BUNDLED_ROM_CACHE: Record<VersionId, Uint8Array | null> = {
   RED: null,
   BLUE: null,
 };
-let BUNDLED_BASE_SRAM: Uint8Array | null = null;
+let BUNDLED_SLOT1_SRAM: Uint8Array | null = null;
+let BUNDLED_SLOT2_SRAM: Uint8Array | null = null;
 const BUNDLED_LOAD_PROMISES: Partial<Record<VersionId, Promise<void>>> = {};
 
 async function ensureBundledRomAndSram(version: VersionId): Promise<void> {
-  if (BUNDLED_ROM_CACHE[version] && BUNDLED_BASE_SRAM) return;
+  if (BUNDLED_ROM_CACHE[version] && BUNDLED_SLOT1_SRAM && BUNDLED_SLOT2_SRAM) return;
   if (!BUNDLED_LOAD_PROMISES[version]) {
     const romUrl = version === 'RED' ? '/roms/pokemon-red.gb' : '/roms/pokemon-blue.gb';
     BUNDLED_LOAD_PROMISES[version] = (async () => {
       try {
-        const [romRes, sramRes] = await Promise.all([
+        const [romRes, sram1Res, sram2Res] = await Promise.all([
           BUNDLED_ROM_CACHE[version] ? Promise.resolve(null) : fetch(romUrl),
-          BUNDLED_BASE_SRAM ? Promise.resolve(null) : fetch('/roms/pokemon-red-base.sav'),
+          BUNDLED_SLOT1_SRAM ? Promise.resolve(null) : fetch('/roms/pokemon-red-base.sav'),
+          BUNDLED_SLOT2_SRAM ? Promise.resolve(null) : fetch('/roms/pokemon-red-slot2.sav'),
         ]);
         if (romRes && romRes.ok) {
           BUNDLED_ROM_CACHE[version] = new Uint8Array(await romRes.arrayBuffer());
         }
-        if (sramRes && sramRes.ok) {
-          BUNDLED_BASE_SRAM = new Uint8Array(await sramRes.arrayBuffer());
+        if (sram1Res && sram1Res.ok) {
+          BUNDLED_SLOT1_SRAM = new Uint8Array(await sram1Res.arrayBuffer());
+        }
+        if (sram2Res && sram2Res.ok) {
+          BUNDLED_SLOT2_SRAM = new Uint8Array(await sram2Res.arrayBuffer());
         }
       } catch (err) {
         console.warn(`Failed to fetch bundled ${version} ROM/SRAM:`, err);
@@ -495,7 +500,7 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
         pokedexOwned: isRed ? 4 : 5,
         hours: 2,
         minutes: isRed ? 15 : 40,
-        locationLabel: 'PALLET TOWN',
+        locationLabel: 'PALLET HOUSE',
         hasSave: true,
       },
       {
@@ -507,7 +512,7 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
         pokedexOwned: 151,
         hours: isRed ? 42 : 38,
         minutes: isRed ? 30 : 45,
-        locationLabel: 'INDIGO / PALLET',
+        locationLabel: 'PROF. OAK LAB',
         hasSave: true,
       },
       {
@@ -565,31 +570,45 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
   };
 
   function getProfileSramKey(slot: number): string {
-    return `${cartId}-sram-v3-slot-${slot}`;
+    return `${cartId}-sram-v4-slot-${slot}`;
+  }
+
+  function buildDefaultSlotSram(prof: TrainerAccountProfile): number[] | null {
+    const baseSram = prof.slot === 1 ? BUNDLED_SLOT2_SRAM ?? BUNDLED_SLOT1_SRAM : BUNDLED_SLOT1_SRAM;
+    if (!baseSram) return null;
+    const isSlot2 = prof.slot === 1;
+    const leadSpeciesByte = isSlot2 ? (isRed ? 0xb4 : 0x1c) : (isRed ? 0xb0 : 0xb1);
+    const leadNickname = isSlot2 ? (isRed ? 'CHARIZARD' : 'BLASTOISE') : (isRed ? 'CHARMANDER' : 'SQUIRTLE');
+    return customizeGen1Sram(baseSram, {
+      playerName: prof.playerName,
+      rivalName: prof.rivalName,
+      badgesMask: prof.badgesMask,
+      pokedexOwnedCount: prof.pokedexOwned,
+      hours: prof.hours,
+      minutes: prof.minutes,
+      leadSpeciesByte,
+      leadNickname,
+    });
   }
 
   function loadAndSyncProfiles(): void {
     if (!state.ctx) return;
     const defaults = createDefaultProfiles();
     const savedProfiles = state.ctx.storage.loadData<TrainerAccountProfile[] | null>(
-      `${cartId}-profiles-v3`,
+      `${cartId}-profiles-v4`,
       null
     );
     state.profiles = savedProfiles && savedProfiles.length === 3 ? savedProfiles : defaults;
 
-    // Ensure each profile with hasSave has a valid 32KB SRAM in storage and sync live stats from SRAM
+    // Ensure each profile with hasSave has its own distinct 32KB SRAM in storage and sync live stats from SRAM
     for (const prof of state.profiles) {
       let sram = state.ctx.storage.loadData<number[] | null>(getProfileSramKey(prof.slot), null);
-      if ((!sram || sram.length < 0x3524) && prof.hasSave && BUNDLED_BASE_SRAM) {
-        sram = customizeGen1Sram(BUNDLED_BASE_SRAM, {
-          playerName: prof.playerName,
-          rivalName: prof.rivalName,
-          badgesMask: prof.badgesMask,
-          pokedexOwnedCount: prof.pokedexOwned,
-          hours: prof.hours,
-          minutes: prof.minutes,
-        });
-        state.ctx.storage.saveData<number[]>(getProfileSramKey(prof.slot), sram);
+      if ((!sram || sram.length < 0x3524) && prof.hasSave) {
+        const built = buildDefaultSlotSram(prof);
+        if (built) {
+          sram = built;
+          state.ctx.storage.saveData<number[]>(getProfileSramKey(prof.slot), sram);
+        }
       }
       const summary = parseGen1SramSummary(sram);
       if (summary && summary.hasValidSave) {
@@ -601,12 +620,12 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
         prof.hasSave = true;
       }
     }
-    state.ctx.storage.saveData<TrainerAccountProfile[]>(`${cartId}-profiles-v3`, state.profiles);
+    state.ctx.storage.saveData<TrainerAccountProfile[]>(`${cartId}-profiles-v4`, state.profiles);
   }
 
   function bootProfileIntoRealRom(
     slot: number,
-    bootTarget: 'TITLE' | 'MAIN_MENU' | 'CONTINUE_INFO' | 'CONTINUE_GAME' | 'OAK_INTRO' = 'CONTINUE_INFO'
+    bootTarget: 'TITLE' | 'MAIN_MENU' | 'CONTINUE_INFO' | 'CONTINUE_GAME' | 'OAK_INTRO' = 'CONTINUE_GAME'
   ): boolean {
     const romBytes = BUNDLED_ROM_CACHE[version] ?? hwEmulator.getRawBytes();
     if (!romBytes) return false;
@@ -616,23 +635,21 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
     const prof = state.profiles[slot] ?? state.profiles[0];
 
     let sram = state.ctx?.storage.loadData<number[] | null>(getProfileSramKey(slot), null) ?? null;
-    if ((!sram || sram.length < 0x3524) && prof.hasSave && BUNDLED_BASE_SRAM) {
-      sram = customizeGen1Sram(BUNDLED_BASE_SRAM, {
-        playerName: prof.playerName,
-        rivalName: prof.rivalName,
-        badgesMask: prof.badgesMask,
-        pokedexOwnedCount: prof.pokedexOwned,
-        hours: prof.hours,
-        minutes: prof.minutes,
-      });
-      state.ctx?.storage.saveData<number[]>(getProfileSramKey(slot), sram);
+    if ((!sram || sram.length < 0x3524) && prof.hasSave) {
+      const built = buildDefaultSlotSram(prof);
+      if (built) {
+        sram = built;
+        state.ctx?.storage.saveData<number[]>(getProfileSramKey(slot), sram);
+      }
     }
 
     const effectiveSram = bootTarget === 'OAK_INTRO' || !prof.hasSave ? null : sram;
     const meta = hwEmulator.loadRom(`${cartId}.gb`, romBytes, effectiveSram, sgbPalette);
     if (meta.isExecutable && hwEmulator.isRunningHardware()) {
       const target =
-        bootTarget === 'CONTINUE_INFO' && !prof.hasSave ? 'OAK_INTRO' : bootTarget;
+        (bootTarget === 'CONTINUE_INFO' || bootTarget === 'CONTINUE_GAME') && !prof.hasSave
+          ? 'OAK_INTRO'
+          : bootTarget;
       hwEmulator.fastForwardGen1Boot(target);
       state.mode = 'EMU_ROM';
       state.ctx?.audio.stopBGM();
@@ -665,9 +682,8 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
           prof.hours = summary.hours;
           prof.minutes = summary.minutes;
           prof.hasSave = true;
-          prof.locationLabel = 'KANTO SAVE';
           state.ctx.storage.saveData<TrainerAccountProfile[]>(
-            `${cartId}-profiles-v3`,
+            `${cartId}-profiles-v4`,
             state.profiles
           );
         }
@@ -842,9 +858,9 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
       state.ctx.audio.playMenuMove();
     } else if (input.justPressed.b) {
       state.ctx.audio.playMenuBack();
-      state.mode = 'TITLE';
+      state.ctx.exitToMenu();
     } else if (input.justPressed.select) {
-      // SELECT boots the real ROM directly onto its iconic Title Screen / New Game
+      // SELECT boots the real ROM directly onto its iconic Title Screen
       state.ctx.audio.playMenuSelect();
       if (!bootProfileIntoRealRom(state.profileCursor, 'TITLE')) {
         ensureBundledRomAndSram(version).then(() => {
@@ -856,7 +872,8 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
     } else if (input.justPressed.a || input.justPressed.start) {
       state.ctx.audio.playMenuSelect();
       const chosen = state.profiles[state.profileCursor];
-      const target = chosen?.hasSave ? 'CONTINUE_INFO' : 'OAK_INTRO';
+      // Boot saved profiles directly into their own live Kanto overworld (CONTINUE_GAME) so menus never overlap
+      const target = chosen?.hasSave ? 'CONTINUE_GAME' : 'OAK_INTRO';
       if (!bootProfileIntoRealRom(state.profileCursor, target)) {
         ensureBundledRomAndSram(version).then(() => {
           state.romReady = Boolean(BUNDLED_ROM_CACHE[version]);
@@ -1183,7 +1200,7 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
       }
     );
 
-    // 3 Trainer Account Profile Cards
+    // 3 Trainer Account Profile Cards (distinct lead Pokemon, location, and stats per slot)
     state.profiles.forEach((prof, idx) => {
       const sel = state.profileCursor === idx;
       const by = 25 + idx * 34;
@@ -1195,36 +1212,49 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
       });
 
       if (sel) {
-        drawPixelText(ctx, '>', 10, by + 6, { color: primaryHex, size: 5 });
+        drawPixelText(ctx, '>', 8, by + 11, { color: primaryHex, size: 5 });
       }
 
       if (prof.hasSave) {
+        const iconSpeciesId = idx === 1 ? mascotId : defaultStarterId;
+        const iconSp = getSpecies(iconSpeciesId);
+        drawMonsterSprite(ctx, iconSp, 14, by + 10, 1);
+
         const timeStr = `${String(prof.hours).padStart(2, '0')}:${String(prof.minutes).padStart(2, '0')}`;
-        drawPixelText(ctx, `FILE ${idx + 1}: ${prof.playerName}`, 18, by + 5, {
+        drawPixelText(ctx, `FILE ${idx + 1}: ${prof.playerName}`, 27, by + 5, {
           color: sel ? '#101820' : '#384450',
-          size: 4.5,
+          size: 4.3,
         });
-        drawPixelText(ctx, 'CONTINUE', 148, by + 5, {
+        drawPixelText(ctx, prof.locationLabel, 149, by + 5, {
           color: primaryHex,
-          size: 4,
+          size: 3.7,
           align: 'right',
         });
         drawPixelText(
           ctx,
           `BDG:${prof.badges}  DEX:${String(prof.pokedexOwned).padStart(3, '0')}  TIME:${timeStr}`,
-          18,
+          27,
           by + 17,
           {
             color: sel ? '#203828' : '#586470',
-            size: 4,
+            size: 3.9,
           }
         );
       } else {
-        drawPixelText(ctx, `FILE ${idx + 1}: + START NEW GAME`, 18, by + 6, {
+        // Draw mini Poke Ball icon for fresh New Game slot
+        ctx.fillStyle = primaryHex;
+        ctx.fillRect(15, by + 11, 8, 4);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(15, by + 15, 8, 4);
+        ctx.fillStyle = '#181818';
+        ctx.fillRect(15, by + 14, 8, 1);
+        ctx.fillRect(18, by + 13, 2, 3);
+
+        drawPixelText(ctx, `FILE ${idx + 1}: + START NEW GAME`, 27, by + 6, {
           color: sel ? primaryHex : '#384450',
-          size: 4.5,
+          size: 4.3,
         });
-        drawPixelText(ctx, 'PROF. OAK INTRO / FRESH SAVE', 18, by + 17, {
+        drawPixelText(ctx, 'PROF. OAK INTRO / FRESH SAVE', 27, by + 17, {
           color: '#586470',
           size: 3.8,
         });
@@ -1234,9 +1264,9 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
     // Footer instruction bar
     ctx.fillStyle = '#182028';
     ctx.fillRect(0, 129, 160, 15);
-    drawPixelText(ctx, 'A/START:BOOT ROM  SEL:TITLE', 80, 134, {
+    drawPixelText(ctx, 'A/START:PLAY  SEL:TITLE  B:EXIT', 80, 134, {
       color: '#f8e838',
-      size: 4,
+      size: 3.9,
       align: 'center',
     });
   }

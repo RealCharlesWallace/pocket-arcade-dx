@@ -157,26 +157,26 @@
   /* Upper-Left Settings Menu (Anchored to the Upper-Left Corner of the Game Boy) */
   .settings-nav {
     position: fixed;
-    inset-block-start: max(12px, env(safe-area-inset-top));
-    inset-inline-start: var(--edge-l);
+    inset-block-start: max(4px, env(safe-area-inset-top));
+    inset-inline-start: 6px;
     z-index: 25;
   }
 
   .settings-trigger {
-    min-block-size: 32px;
-    padding: 5px 10px;
-    background: rgba(15, 18, 17, 0.88);
-    border: 1px solid rgba(232, 230, 220, 0.34);
-    border-radius: 6px;
+    min-block-size: 26px;
+    padding: 3px 8px;
+    background: rgba(15, 18, 17, 0.86);
+    border: 1px solid rgba(232, 230, 220, 0.32);
+    border-radius: 5px;
     color: var(--bone);
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     font-family: var(--font-pixel);
-    font-size: 8px;
-    letter-spacing: 0.06em;
+    font-size: 7px;
+    letter-spacing: 0.05em;
     backdrop-filter: blur(8px);
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
     transition: transform 0.14s ease, border-color 0.14s ease, background-color 0.14s ease, box-shadow 0.14s ease;
   }
 
@@ -948,59 +948,40 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    touch-action: manipulation;
+    touch-action: none;
     user-select: none;
     -webkit-user-select: none;
     -webkit-tap-highlight-color: transparent;
-    transition:
-      transform 0.14s cubic-bezier(0.22, 1, 0.36, 1),
-      background-color 0.14s ease,
-      border-color 0.14s ease,
-      box-shadow 0.14s ease;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    outline: none;
   }
 
   .touch-btn {
-    background: rgba(255, 255, 255, 0.01);
-    border: 1.5px solid rgba(255, 255, 255, 0.08);
     border-radius: 4px;
   }
 
   .touch-pill {
-    background: rgba(255, 255, 255, 0.01);
-    border: 1.5px solid rgba(255, 255, 255, 0.10);
     border-radius: 999px;
   }
 
   .touch-action {
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.01);
-    border: 1.5px solid rgba(255, 255, 255, 0.10);
   }
 
   .touch-btn:hover,
   .touch-pill:hover,
-  .touch-action:hover {
-    transform: translate(-50%, -54%) scale(1.08);
-    background: rgba(70, 184, 184, 0.20);
-    border-color: rgba(116, 242, 242, 0.85);
-    box-shadow:
-      0 6px 16px rgba(0, 0, 0, 0.48),
-      0 0 14px rgba(70, 184, 184, 0.55),
-      inset 0 0 8px rgba(255, 255, 255, 0.22);
-  }
-
+  .touch-action:hover,
   .touch-btn:active,
   .touch-pill:active,
   .touch-action:active,
   .touch-btn.is-pressed,
   .touch-pill.is-pressed,
   .touch-action.is-pressed {
-    transform: translate(-50%, -46%) scale(0.93);
-    background: rgba(88, 248, 136, 0.34);
-    border-color: #58f888;
-    box-shadow:
-      0 0 16px rgba(88, 248, 136, 0.7),
-      inset 0 3px 10px rgba(0, 0, 0, 0.55);
+    background: transparent;
+    border: none;
+    box-shadow: none;
   }
 
   @media (max-width: 900px), (pointer: coarse) {

@@ -24,9 +24,15 @@ export class StageScene {
 
   private pointerNormX = 0;
   private pointerNormY = 0;
-  private activeRaycastButton: GBCButton | null = null;
+  private dpadPointerId: number | null = null;
+  private actionPointerId: number | null = null;
   private hoveredRaycastButton: GBCButton | null = null;
   private zoomedIn = false;
+
+  private dpadScreenX = 0;
+  private dpadScreenY = 0;
+  private dpadRadiusPx = 64;
+  private btnScreenRects: Partial<Record<GBCButton, { x: number; y: number; w: number; h: number }>> = {};
 
   private onVirtualButton: (btn: GBCButton, pressed: boolean) => void;
   private onPowerToggle: () => void;
@@ -88,12 +94,31 @@ export class StageScene {
         this.overlayButtons[btn] = el;
         el.addEventListener('pointerenter', () => this.gbc.setButtonHover(btn, true));
         el.addEventListener('pointerleave', () => this.gbc.setButtonHover(btn, false));
+        el.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          try {
+            if (el.hasPointerCapture(e.pointerId)) {
+              el.releasePointerCapture(e.pointerId);
+            }
+          } catch {
+            // Ignore pointer capture release errors
+          }
+          if (btn === 'up' || btn === 'down' || btn === 'left' || btn === 'right') {
+            this.dpadPointerId = e.pointerId;
+            this.updateDpadFromScreenPoint(e.clientX, e.clientY, btn);
+          } else {
+            this.actionPointerId = e.pointerId;
+            this.updateActionFromScreenPoint(e.clientX, e.clientY, btn);
+          }
+        });
       }
     }
 
     this.setupLighting();
     this.bindEvents(container);
     this.updateCameraFraming(true);
+    this.applyUrlDebugPress();
   }
 
   private syncViewportSize(): void {
@@ -140,6 +165,115 @@ export class StageScene {
     this.scene.add(bottomFill);
   }
 
+  private applyUrlDebugPress(): void {
+    const params = new URLSearchParams(window.location.search);
+    const pressParam = params.get('press')?.toLowerCase();
+    if (!pressParam) return;
+    setTimeout(() => {
+      if (pressParam === 'upright') {
+        this.onVirtualButton('up', true);
+        this.onVirtualButton('right', true);
+        this.gbc.setDpadSlideVector(0.75, -0.75);
+      } else if (pressParam === 'downleft') {
+        this.onVirtualButton('down', true);
+        this.onVirtualButton('left', true);
+        this.gbc.setDpadSlideVector(-0.75, 0.75);
+      } else if (ALL_GBC_BUTTONS.includes(pressParam as GBCButton)) {
+        this.onVirtualButton(pressParam as GBCButton, true);
+      }
+    }, 350);
+  }
+
+  private updateDpadFromScreenPoint(
+    clientX: number,
+    clientY: number,
+    initialBtn?: GBCButton
+  ): void {
+    const dx = clientX - this.dpadScreenX;
+    const dy = clientY - this.dpadScreenY;
+    const dist = Math.hypot(dx, dy);
+    const rad = Math.max(24, this.dpadRadiusPx);
+
+    if (dist < rad * 0.14 && !initialBtn) {
+      this.gbc.setDpadSlideVector(0, 0);
+      this.onVirtualButton('up', false);
+      this.onVirtualButton('down', false);
+      this.onVirtualButton('left', false);
+      this.onVirtualButton('right', false);
+      return;
+    }
+
+    let ux = dist > 1 ? dx / dist : 0;
+    let uy = dist > 1 ? dy / dist : 0;
+    if (dist < rad * 0.14 && initialBtn) {
+      ux = initialBtn === 'right' ? 1 : initialBtn === 'left' ? -1 : 0;
+      uy = initialBtn === 'down' ? 1 : initialBtn === 'up' ? -1 : 0;
+    }
+
+    const mag = Math.min(1, Math.max(0.55, dist / (rad * 0.85)));
+    this.gbc.setDpadSlideVector(ux * mag, uy * mag);
+
+    // 8-way continuous angle sector detection (cardinals + 45-degree diagonals when sliding!)
+    const diagThreshold = 0.38268; // sin(22.5 deg) so each 45-degree cardinal & diagonal sector is active
+    this.onVirtualButton('up', uy < -diagThreshold);
+    this.onVirtualButton('down', uy > diagThreshold);
+    this.onVirtualButton('left', ux < -diagThreshold);
+    this.onVirtualButton('right', ux > diagThreshold);
+  }
+
+  private releaseDpadButtons(): void {
+    this.gbc.setDpadSlideVector(0, 0);
+    this.onVirtualButton('up', false);
+    this.onVirtualButton('down', false);
+    this.onVirtualButton('left', false);
+    this.onVirtualButton('right', false);
+  }
+
+  private updateActionFromScreenPoint(
+    clientX: number,
+    clientY: number,
+    fallbackBtn?: GBCButton
+  ): void {
+    const actionBtns: Array<'a' | 'b' | 'select' | 'start'> = ['a', 'b', 'select', 'start'];
+    let anyMatched = false;
+
+    for (const btn of actionBtns) {
+      const rect = this.btnScreenRects[btn];
+      if (!rect) continue;
+      const dx = clientX - rect.x;
+      const dy = clientY - rect.y;
+      const rx = Math.max(20, rect.w * 0.68);
+      const ry = Math.max(18, rect.h * 0.68);
+      const normDist = Math.hypot(dx / rx, dy / ry);
+      const isHit = normDist <= 1.05;
+      if (isHit) {
+        anyMatched = true;
+        this.onVirtualButton(btn, true);
+        if (btn === 'a' || btn === 'b') {
+          this.gbc.setActionButtonTilt(btn, dx / rx, dy / ry);
+        }
+      } else {
+        this.onVirtualButton(btn, false);
+        if (btn === 'a' || btn === 'b') {
+          this.gbc.setActionButtonTilt(btn, 0, 0);
+        }
+      }
+    }
+
+    if (!anyMatched && fallbackBtn && actionBtns.includes(fallbackBtn as 'a' | 'b' | 'select' | 'start')) {
+      this.onVirtualButton(fallbackBtn, true);
+    }
+  }
+
+  private releaseActionButtons(): void {
+    this.gbc.setActionButtonTilt('a', 0, 0);
+    this.gbc.setActionButtonTilt('b', 0, 0);
+    this.onVirtualButton('a', false);
+    this.onVirtualButton('b', false);
+    this.onVirtualButton('select', false);
+    this.onVirtualButton('start', false);
+  }
+
   private bindEvents(container: HTMLElement): void {
     window.addEventListener('resize', () => this.syncViewportSize());
     if (typeof ResizeObserver !== 'undefined') {
@@ -147,7 +281,14 @@ export class StageScene {
       ro.observe(container);
     }
 
-    container.addEventListener('pointermove', (e) => {
+    window.addEventListener('pointermove', (e) => {
+      if (this.dpadPointerId !== null && e.pointerId === this.dpadPointerId) {
+        this.updateDpadFromScreenPoint(e.clientX, e.clientY);
+      }
+      if (this.actionPointerId !== null && e.pointerId === this.actionPointerId) {
+        this.updateActionFromScreenPoint(e.clientX, e.clientY);
+      }
+
       const rect = container.getBoundingClientRect();
       this.pointerNormX = ((e.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1;
       this.pointerNormY = -((e.clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1;
@@ -169,6 +310,14 @@ export class StageScene {
     });
 
     container.addEventListener('pointerdown', (e) => {
+      // Check if pointer started anywhere inside the D-Pad circular zone (including diagonal corners!)
+      const dpadDist = Math.hypot(e.clientX - this.dpadScreenX, e.clientY - this.dpadScreenY);
+      if (dpadDist <= this.dpadRadiusPx * 1.25) {
+        this.dpadPointerId = e.pointerId;
+        this.updateDpadFromScreenPoint(e.clientX, e.clientY);
+        return;
+      }
+
       const rect = container.getBoundingClientRect();
       this.pointerNormX = ((e.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1;
       this.pointerNormY = -((e.clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1;
@@ -181,23 +330,30 @@ export class StageScene {
         const ctrl = hits[0].object.userData.control as string | undefined;
         if (ctrl === 'power' || ctrl === 'screen') {
           this.onPowerToggle();
+        } else if (ctrl === 'up' || ctrl === 'down' || ctrl === 'left' || ctrl === 'right') {
+          this.dpadPointerId = e.pointerId;
+          this.updateDpadFromScreenPoint(e.clientX, e.clientY, ctrl);
         } else if (ctrl) {
           const btn = ctrl as GBCButton;
-          this.activeRaycastButton = btn;
-          this.onVirtualButton(btn, true);
+          this.actionPointerId = e.pointerId;
+          this.updateActionFromScreenPoint(e.clientX, e.clientY, btn);
         }
       }
     });
 
-    const releaseRaycastButton = () => {
-      if (this.activeRaycastButton) {
-        this.onVirtualButton(this.activeRaycastButton, false);
-        this.activeRaycastButton = null;
+    const handlePointerEnd = (e: PointerEvent) => {
+      if (this.dpadPointerId !== null && e.pointerId === this.dpadPointerId) {
+        this.dpadPointerId = null;
+        this.releaseDpadButtons();
+      }
+      if (this.actionPointerId !== null && e.pointerId === this.actionPointerId) {
+        this.actionPointerId = null;
+        this.releaseActionButtons();
       }
     };
 
-    window.addEventListener('pointerup', releaseRaycastButton);
-    window.addEventListener('pointercancel', releaseRaycastButton);
+    window.addEventListener('pointerup', handlePointerEnd);
+    window.addEventListener('pointercancel', handlePointerEnd);
   }
 
   getModel(): GameBoyColor3D {
@@ -248,18 +404,31 @@ export class StageScene {
     this.gbc.root.updateWorldMatrix(true, true);
     this.camera.updateMatrixWorld();
 
-    // Anchor #settings-nav to the upper-left corner of the 3D Game Boy shell (above the screen bezel)
+    // Anchor #settings-nav high in the upper-left corner of the 3D Game Boy shell (clear of the LCD screen)
     if (this.settingsNavEl) {
-      this.tempCenter.set(-1.46, 2.68, 0.44);
+      this.tempCenter.set(-1.54, 2.86, 0.44);
       this.gbc.root.localToWorld(this.tempCenter);
       this.tempCenter.project(this.camera);
       const rawX = (this.tempCenter.x * 0.5 + 0.5) * cw;
       const rawY = (-this.tempCenter.y * 0.5 + 0.5) * ch;
-      const clampedX = Math.max(8, Math.min(cw - 130, rawX));
-      const clampedY = Math.max(6, Math.min(ch - 60, rawY));
+      const clampedX = Math.max(6, Math.min(cw - 120, rawX));
+      const clampedY = Math.max(4, Math.min(28, rawY));
       this.settingsNavEl.style.left = `${clampedX.toFixed(1)}px`;
       this.settingsNavEl.style.top = `${clampedY.toFixed(1)}px`;
     }
+
+    // Compute exact screen-space center & radius of the 3D D-Pad for 360-degree angle sliding
+    this.tempCenter.set(0, 0, 0.08);
+    this.tempEdge.set(0.48, 0, 0.08);
+    this.gbc.dpadGroup.localToWorld(this.tempCenter);
+    this.gbc.dpadGroup.localToWorld(this.tempEdge);
+    this.tempCenter.project(this.camera);
+    this.tempEdge.project(this.camera);
+    this.dpadScreenX = (this.tempCenter.x * 0.5 + 0.5) * cw;
+    this.dpadScreenY = (-this.tempCenter.y * 0.5 + 0.5) * ch;
+    const edgeScreenX = (this.tempEdge.x * 0.5 + 0.5) * cw;
+    const edgeScreenY = (-this.tempEdge.y * 0.5 + 0.5) * ch;
+    this.dpadRadiusPx = Math.max(32, Math.hypot(edgeScreenX - this.dpadScreenX, edgeScreenY - this.dpadScreenY));
 
     // Center the #gate Power-On card directly inside the enlarged 3D LCD screen
     if (this.gateEl && !this.gateEl.hasAttribute('hidden') && this.gbc.lcdMesh) {
@@ -297,6 +466,7 @@ export class StageScene {
       const screenY = (-(this.tempCenter.y + this.tempEdge.y) * 0.25 + 0.5) * ch;
       const pxW = Math.abs(this.tempEdge.x - this.tempCenter.x) * 0.5 * cw;
       const pxH = Math.abs(this.tempEdge.y - this.tempCenter.y) * 0.5 * ch;
+      this.btnScreenRects[btn] = { x: screenX, y: screenY, w: pxW, h: pxH };
 
       const inViewport = screenY > 10 && screenY < ch - 12 && screenX > 4 && screenX < cw - 4;
       el.style.left = `${screenX.toFixed(1)}px`;
