@@ -18,12 +18,14 @@ export class StageScene {
   private screenTexture: THREE.CanvasTexture;
   private overlayButtons: Partial<Record<GBCButton, HTMLElement>> = {};
   private gateEl: HTMLElement | null = null;
+  private settingsNavEl: HTMLElement | null = null;
   private lastWidth = 0;
   private lastHeight = 0;
 
   private pointerNormX = 0;
   private pointerNormY = 0;
   private activeRaycastButton: GBCButton | null = null;
+  private hoveredRaycastButton: GBCButton | null = null;
   private zoomedIn = false;
 
   private onVirtualButton: (btn: GBCButton, pressed: boolean) => void;
@@ -41,11 +43,8 @@ export class StageScene {
     this.onVirtualButton = options.onVirtualButton;
     this.onPowerToggle = options.onPowerToggle;
 
-    for (const btn of ALL_GBC_BUTTONS) {
-      const el = document.querySelector<HTMLElement>(`[data-btn="${btn}"]`);
-      if (el) this.overlayButtons[btn] = el;
-    }
     this.gateEl = document.getElementById('gate');
+    this.settingsNavEl = document.getElementById('settings-nav');
 
     const initW = container.clientWidth || window.innerWidth;
     const initH = container.clientHeight || window.innerHeight;
@@ -59,7 +58,7 @@ export class StageScene {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(initW, initH);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.1;
+    this.renderer.toneMappingExposure = 1.18;
     container.appendChild(this.renderer.domElement);
 
     this.camera = new THREE.PerspectiveCamera(
@@ -68,7 +67,7 @@ export class StageScene {
       0.1,
       50
     );
-    this.camera.position.set(0, 0.15, 9.2);
+    this.camera.position.set(0, 0.05, 8.5);
 
     // Crisp nearest-neighbor CanvasTexture for the Game Boy screen
     this.screenTexture = new THREE.CanvasTexture(screenCanvas);
@@ -78,7 +77,19 @@ export class StageScene {
     this.screenTexture.colorSpace = THREE.SRGBColorSpace;
 
     this.gbc = new GameBoyColor3D(this.screenTexture);
+    // Start with a subtle 3D perspective angle so side ribs, bevels, and power switch are immediately visible
+    this.gbc.root.rotation.y = -0.14;
+    this.gbc.root.rotation.x = 0.04;
     this.scene.add(this.gbc.root);
+
+    for (const btn of ALL_GBC_BUTTONS) {
+      const el = document.querySelector<HTMLElement>(`[data-btn="${btn}"]`);
+      if (el) {
+        this.overlayButtons[btn] = el;
+        el.addEventListener('pointerenter', () => this.gbc.setButtonHover(btn, true));
+        el.addEventListener('pointerleave', () => this.gbc.setButtonHover(btn, false));
+      }
+    }
 
     this.setupLighting();
     this.bindEvents(container);
@@ -105,19 +116,27 @@ export class StageScene {
   }
 
   private setupLighting(): void {
-    const ambient = new THREE.AmbientLight(0xd8e0e8, 0.85);
+    const ambient = new THREE.AmbientLight(0xd4deea, 0.72);
     this.scene.add(ambient);
 
-    const keyLight = new THREE.DirectionalLight(0xfff8ec, 2.1);
-    keyLight.position.set(3.5, 5.5, 6.0);
+    // Strong top-left key light for specular bevel highlights and 3D button shadows
+    const keyLight = new THREE.DirectionalLight(0xfff9ee, 2.35);
+    keyLight.position.set(-3.2, 5.8, 6.2);
     this.scene.add(keyLight);
 
-    const rimLight = new THREE.DirectionalLight(0x46b8b8, 1.15);
-    rimLight.position.set(-4.5, 2.5, -3.5);
-    this.scene.add(rimLight);
+    // Bright right-side rim light to sculpt the 3D right side bevel, 5 grip ribs, seam groove, and power switch
+    const rightSideRim = new THREE.DirectionalLight(0x74f2f2, 2.1);
+    rightSideRim.position.set(5.5, 1.8, 2.2);
+    this.scene.add(rightSideRim);
 
-    const bottomFill = new THREE.DirectionalLight(0x9a9a90, 0.55);
-    bottomFill.position.set(0, -5, 3);
+    // Left kick light for balanced 3D contour
+    const leftRim = new THREE.DirectionalLight(0x46b8b8, 1.05);
+    leftRim.position.set(-5.0, -1.5, -2.5);
+    this.scene.add(leftRim);
+
+    // Bottom fill to highlight curved bottom chin and speaker grille perforations
+    const bottomFill = new THREE.DirectionalLight(0xb8b4a8, 0.65);
+    bottomFill.position.set(0.5, -5.5, 3.5);
     this.scene.add(bottomFill);
   }
 
@@ -130,20 +149,31 @@ export class StageScene {
 
     container.addEventListener('pointermove', (e) => {
       const rect = container.getBoundingClientRect();
-      this.pointerNormX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      this.pointerNormY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      this.pointerNormX = ((e.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1;
+      this.pointerNormY = -((e.clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1;
 
       this.pointer.x = this.pointerNormX;
       this.pointer.y = this.pointerNormY;
       this.raycaster.setFromCamera(this.pointer, this.camera);
       const hits = this.raycaster.intersectObjects(this.gbc.interactiveMeshes, false);
       container.style.cursor = hits.length > 0 ? 'pointer' : 'default';
+
+      const hitCtrl = hits.length > 0 ? (hits[0].object.userData.control as string | undefined) : undefined;
+      const nextHoverBtn =
+        hitCtrl && hitCtrl !== 'power' && hitCtrl !== 'screen' ? (hitCtrl as GBCButton) : null;
+      if (this.hoveredRaycastButton !== nextHoverBtn) {
+        if (this.hoveredRaycastButton) this.gbc.setButtonHover(this.hoveredRaycastButton, false);
+        if (nextHoverBtn) this.gbc.setButtonHover(nextHoverBtn, true);
+        this.hoveredRaycastButton = nextHoverBtn;
+      }
     });
 
     container.addEventListener('pointerdown', (e) => {
       const rect = container.getBoundingClientRect();
-      this.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      this.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      this.pointerNormX = ((e.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1;
+      this.pointerNormY = -((e.clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1;
+      this.pointer.x = this.pointerNormX;
+      this.pointer.y = this.pointerNormY;
 
       this.raycaster.setFromCamera(this.pointer, this.camera);
       const hits = this.raycaster.intersectObjects(this.gbc.interactiveMeshes, false);
@@ -186,16 +216,15 @@ export class StageScene {
     const aspect = Math.max(0.35, this.camera.aspect);
     const isNarrow = aspect < 0.85;
 
-    this.gbc.setMobileFullBleed(isNarrow, 3.12 / aspect + 0.6);
-
-    let targetX = 0;
-    let targetY = isNarrow ? -0.02 : 0.08;
-    let targetZ = isNarrow ? 0.39 + 4.82 / aspect : Math.max(8.7, 5.15 / aspect);
+    // Closer camera framing so the Game Boy and its enlarged 10:9 LCD fill the screen while showing 3D bevels & side ribs
+    let targetX = isNarrow ? 0.10 : 0.08;
+    let targetY = isNarrow ? -0.08 : 0.02;
+    let targetZ = isNarrow ? 0.44 + 5.20 / aspect : Math.max(8.2, 5.05 / aspect);
 
     if (this.zoomedIn) {
-      targetX = isNarrow ? 0.05 : 0.08;
-      targetY = isNarrow ? 1.12 : 1.22;
-      targetZ = isNarrow ? 0.39 + 3.45 / aspect : Math.max(3.95, 3.65 / aspect);
+      targetX = isNarrow ? 0.06 : 0.08;
+      targetY = isNarrow ? 1.18 : 1.26;
+      targetZ = isNarrow ? 0.42 + 3.45 / aspect : Math.max(3.85, 3.55 / aspect);
     }
 
     if (instant) {
@@ -205,7 +234,7 @@ export class StageScene {
       this.camera.position.x += (targetX - this.camera.position.x) * 0.12;
       this.camera.position.y += (targetY - this.camera.position.y) * 0.12;
       this.camera.position.z += (targetZ - this.camera.position.z) * 0.12;
-      this.camera.lookAt(this.camera.position.x, isNarrow ? this.camera.position.y : this.camera.position.y * 0.95, 0);
+      this.camera.lookAt(this.camera.position.x, isNarrow ? this.camera.position.y : this.camera.position.y * 0.96, 0);
     }
   }
 
@@ -217,10 +246,23 @@ export class StageScene {
     this.gbc.root.updateWorldMatrix(true, true);
     this.camera.updateMatrixWorld();
 
-    // Center the #gate Power-On card directly inside the 3D LCD screen
+    // Anchor #settings-nav to the upper-left corner of the 3D Game Boy shell (above the screen bezel)
+    if (this.settingsNavEl) {
+      this.tempCenter.set(-1.46, 2.68, 0.44);
+      this.gbc.root.localToWorld(this.tempCenter);
+      this.tempCenter.project(this.camera);
+      const rawX = (this.tempCenter.x * 0.5 + 0.5) * cw;
+      const rawY = (-this.tempCenter.y * 0.5 + 0.5) * ch;
+      const clampedX = Math.max(8, Math.min(cw - 130, rawX));
+      const clampedY = Math.max(6, Math.min(ch - 60, rawY));
+      this.settingsNavEl.style.left = `${clampedX.toFixed(1)}px`;
+      this.settingsNavEl.style.top = `${clampedY.toFixed(1)}px`;
+    }
+
+    // Center the #gate Power-On card directly inside the enlarged 3D LCD screen
     if (this.gateEl && !this.gateEl.hasAttribute('hidden') && this.gbc.lcdMesh) {
-      this.tempCenter.set(-0.92, -0.82, 0.01);
-      this.tempEdge.set(0.92, 0.82, 0.01);
+      this.tempCenter.set(-1.08, -0.96, 0.01);
+      this.tempEdge.set(1.08, 0.96, 0.01);
       this.gbc.lcdMesh.localToWorld(this.tempCenter);
       this.gbc.lcdMesh.localToWorld(this.tempEdge);
       this.tempCenter.project(this.camera);
@@ -231,7 +273,7 @@ export class StageScene {
       const lcdW = Math.abs(this.tempEdge.x - this.tempCenter.x) * 0.5 * cw;
       this.gateEl.style.left = `${lcdX.toFixed(1)}px`;
       this.gateEl.style.top = `${lcdY.toFixed(1)}px`;
-      this.gateEl.style.width = `${Math.min(280, Math.max(168, lcdW * 0.94)).toFixed(1)}px`;
+      this.gateEl.style.width = `${Math.min(290, Math.max(176, lcdW * 0.92)).toFixed(1)}px`;
     }
 
     for (const btn of ALL_GBC_BUTTONS) {
@@ -254,7 +296,7 @@ export class StageScene {
       const pxW = Math.abs(this.tempEdge.x - this.tempCenter.x) * 0.5 * cw;
       const pxH = Math.abs(this.tempEdge.y - this.tempCenter.y) * 0.5 * ch;
 
-      const inViewport = screenY > 10 && screenY < ch - 42 && screenX > 6 && screenX < cw - 6;
+      const inViewport = screenY > 10 && screenY < ch - 12 && screenX > 4 && screenX < cw - 4;
       el.style.left = `${screenX.toFixed(1)}px`;
       el.style.top = `${screenY.toFixed(1)}px`;
       el.style.width = `${pxW.toFixed(1)}px`;
@@ -269,11 +311,14 @@ export class StageScene {
     this.updateCameraFraming(false);
 
     const isNarrow = this.camera.aspect < 0.85;
-    // Keep the console flush edge-to-edge on mobile portrait; allow subtle parallax tilt on desktop
-    const tiltAllowance = isNarrow ? 0 : this.zoomedIn ? 0.04 : 0.22;
-    const idleWobble = isNarrow ? 0 : 1;
-    const targetRotY = this.pointerNormX * tiltAllowance + Math.sin(time * 0.8) * 0.025 * idleWobble;
-    const targetRotX = -this.pointerNormY * (tiltAllowance * 0.75) + Math.cos(time * 0.6) * 0.018 * idleWobble;
+    // Authentic 3D perspective angle showing sculpted right side ribs, power switch & bevels + hover-over tilt
+    const baseRotY = this.zoomedIn ? -0.04 : isNarrow ? -0.18 : -0.21;
+    const baseRotX = this.zoomedIn ? 0.01 : 0.035;
+    const tiltAllowance = this.zoomedIn ? 0.04 : isNarrow ? 0.10 : 0.20;
+    const targetRotY =
+      baseRotY + this.pointerNormX * tiltAllowance + Math.sin(time * 0.85) * 0.018;
+    const targetRotX =
+      baseRotX - this.pointerNormY * (tiltAllowance * 0.7) + Math.cos(time * 0.65) * 0.014;
 
     this.gbc.root.rotation.y += (targetRotY - this.gbc.root.rotation.y) * Math.min(1, dt * 8);
     this.gbc.root.rotation.x += (targetRotX - this.gbc.root.rotation.x) * Math.min(1, dt * 8);

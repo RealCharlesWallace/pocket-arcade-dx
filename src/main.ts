@@ -208,8 +208,34 @@ function bootstrap(): void {
     stageContainer.focus();
   });
 
+  // Upper-Left Settings Menu Toggle & Auto-Close
+  const settingsNav = document.getElementById('settings-nav');
+  const btnSettingsToggle = document.getElementById('btn-settings-toggle');
+  const setSettingsOpen = (open: boolean) => {
+    if (!settingsNav || !btnSettingsToggle) return;
+    settingsNav.classList.toggle('is-open', open);
+    btnSettingsToggle.setAttribute('aria-expanded', String(open));
+  };
+  btnSettingsToggle?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isOpen = settingsNav?.classList.contains('is-open') ?? false;
+    setSettingsOpen(!isOpen);
+    audio.playButtonClick();
+  });
+  document.addEventListener('pointerdown', (e) => {
+    if (settingsNav?.classList.contains('is-open') && !settingsNav.contains(e.target as Node)) {
+      setSettingsOpen(false);
+    }
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && settingsNav?.classList.contains('is-open')) {
+      setSettingsOpen(false);
+    }
+  });
+
   // Eject / Return to Cartridge Carousel Menu
   btnEject.addEventListener('click', () => {
+    setSettingsOpen(false);
     powerOnConsole();
     systemOS.returnToCarousel();
     stageContainer.focus();
