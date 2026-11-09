@@ -2,7 +2,17 @@ import type { GameCartridge } from '../core/types';
 import { froggerCartridge } from './frogger';
 import { kirbyTiltCartridge } from './kirby-tilt-n-tumble';
 import { linksQuestCartridge } from './links-quest';
-import { pokemonBlueCartridge, pokemonRedCartridge } from './pocket-monsters';
+import {
+  pokemonBlueCartridge,
+  pokemonCrystalCartridge,
+  pokemonGoldCartridge,
+  pokemonPinballCartridge,
+  pokemonPuzzleCartridge,
+  pokemonRedCartridge,
+  pokemonSilverCartridge,
+  pokemonTcgCartridge,
+  pokemonYellowCartridge,
+} from './pocket-monsters';
 import { romLoaderCartridge } from './rom-loader';
 import { streetRacerCartridge } from './street-racer';
 import { superPixelLandCartridge } from './super-pixel-land';
@@ -21,6 +31,13 @@ export const CARTRIDGE_REGISTRY: GameCartridge[] = [
   kirbyTiltCartridge,
   pokemonRedCartridge,
   pokemonBlueCartridge,
+  pokemonYellowCartridge,
+  pokemonGoldCartridge,
+  pokemonSilverCartridge,
+  pokemonCrystalCartridge,
+  pokemonTcgCartridge,
+  pokemonPinballCartridge,
+  pokemonPuzzleCartridge,
   linksQuestCartridge,
   superPixelLandCartridge,
   tetrablockDxCartridge,

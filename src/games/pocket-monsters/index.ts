@@ -13,7 +13,16 @@ import {
 import type { GameCartridge, GameContext, InputState } from '../../core/types';
 
 type ElementType = 'FIRE' | 'WATER' | 'GRASS' | 'VOLT' | 'EARTH';
-type VersionId = 'RED' | 'BLUE';
+export type VersionId =
+  | 'RED'
+  | 'BLUE'
+  | 'YELLOW'
+  | 'GOLD'
+  | 'SILVER'
+  | 'CRYSTAL'
+  | 'TCG'
+  | 'PINBALL'
+  | 'PUZZLE';
 
 interface MoveDef {
   name: string;
@@ -356,6 +365,90 @@ const KANTO_SPECIES: MonsterSpecies[] = [
       { name: 'SWIFT', type: 'EARTH', power: 13 },
     ],
   },
+  {
+    id: 'hooh',
+    name: 'HO-OH',
+    type: 'FIRE',
+    baseHp: 52,
+    baseAtk: 16,
+    color1: '#e84820',
+    color2: '#f8d028',
+    sprite: [
+      '..22.11.22..',
+      '.2211111122.',
+      '112131131211',
+      '111111111111',
+      '.2211221122.',
+      '..11222211..',
+      '.1112222111.',
+      '..22111122..',
+      '...11..11...',
+      '..22....22..',
+      '............',
+      '............',
+    ],
+    moves: [
+      { name: 'SACRED FIRE', type: 'FIRE', power: 20 },
+      { name: 'FLAMETHROWER', type: 'FIRE', power: 17 },
+      { name: 'SWIFT', type: 'EARTH', power: 13 },
+    ],
+  },
+  {
+    id: 'lugia',
+    name: 'LUGIA',
+    type: 'WATER',
+    baseHp: 52,
+    baseAtk: 15,
+    color1: '#dce8f8',
+    color2: '#2868d8',
+    sprite: [
+      '.22..11..22.',
+      '221111111122',
+      '111231132111',
+      '.1111111111.',
+      '..11222211..',
+      '.1112222111.',
+      '11.122221.11',
+      '...112211...',
+      '..22....22..',
+      '............',
+      '............',
+      '............',
+    ],
+    moves: [
+      { name: 'AEROBLAST', type: 'WATER', power: 20 },
+      { name: 'HYDRO PUMP', type: 'WATER', power: 18 },
+      { name: 'SWIFT', type: 'EARTH', power: 13 },
+    ],
+  },
+  {
+    id: 'suicune',
+    name: 'SUICUNE',
+    type: 'WATER',
+    baseHp: 48,
+    baseAtk: 15,
+    color1: '#38b8e8',
+    color2: '#a858d8',
+    sprite: [
+      '...221122...',
+      '..22111122..',
+      '..11311311..',
+      '.2211111122.',
+      '22.111111.22',
+      '...11111111.',
+      '..111111111.',
+      '..11.11.11..',
+      '.11..11..11.',
+      '............',
+      '............',
+      '............',
+    ],
+    moves: [
+      { name: 'AURORA BEAM', type: 'WATER', power: 18 },
+      { name: 'SURF', type: 'WATER', power: 17 },
+      { name: 'BITE', type: 'EARTH', power: 13 },
+    ],
+  },
 ];
 
 function getTypeMultiplier(atk: ElementType, def: ElementType): number {
@@ -417,24 +510,53 @@ export interface TrainerAccountProfile {
   hasSave: boolean;
 }
 
+const BUNDLED_ROM_URLS: Record<VersionId, string> = {
+  RED: './roms/pokemon-red.gb',
+  BLUE: './roms/pokemon-blue.gb',
+  YELLOW: './roms/pokemon-yellow.gbc',
+  GOLD: './roms/pokemon-gold.gbc',
+  SILVER: './roms/pokemon-silver.gbc',
+  CRYSTAL: './roms/pokemon-crystal.gbc',
+  TCG: './roms/pokemon-tcg.gbc',
+  PINBALL: './roms/pokemon-pinball.gbc',
+  PUZZLE: './roms/pokemon-puzzle.gbc',
+};
+
 const BUNDLED_ROM_CACHE: Record<VersionId, Uint8Array | null> = {
   RED: null,
   BLUE: null,
+  YELLOW: null,
+  GOLD: null,
+  SILVER: null,
+  CRYSTAL: null,
+  TCG: null,
+  PINBALL: null,
+  PUZZLE: null,
 };
 let BUNDLED_SLOT1_SRAM: Uint8Array | null = null;
 let BUNDLED_SLOT2_SRAM: Uint8Array | null = null;
 const BUNDLED_LOAD_PROMISES: Partial<Record<VersionId, Promise<void>>> = {};
 
 async function ensureBundledRomAndSram(version: VersionId): Promise<void> {
-  if (BUNDLED_ROM_CACHE[version] && BUNDLED_SLOT1_SRAM && BUNDLED_SLOT2_SRAM) return;
+  const needsGen1Sram = version === 'RED' || version === 'BLUE';
+  if (
+    BUNDLED_ROM_CACHE[version] &&
+    (!needsGen1Sram || (BUNDLED_SLOT1_SRAM && BUNDLED_SLOT2_SRAM))
+  ) {
+    return;
+  }
   if (!BUNDLED_LOAD_PROMISES[version]) {
-    const romUrl = version === 'RED' ? './roms/pokemon-red.gb' : './roms/pokemon-blue.gb';
+    const romUrl = BUNDLED_ROM_URLS[version];
     BUNDLED_LOAD_PROMISES[version] = (async () => {
       try {
         const [romRes, sram1Res, sram2Res] = await Promise.all([
           BUNDLED_ROM_CACHE[version] ? Promise.resolve(null) : fetch(romUrl),
-          BUNDLED_SLOT1_SRAM ? Promise.resolve(null) : fetch('./roms/pokemon-red-base.sav'),
-          BUNDLED_SLOT2_SRAM ? Promise.resolve(null) : fetch('./roms/pokemon-red-slot2.sav'),
+          !needsGen1Sram || BUNDLED_SLOT1_SRAM
+            ? Promise.resolve(null)
+            : fetch('./roms/pokemon-red-base.sav'),
+          !needsGen1Sram || BUNDLED_SLOT2_SRAM
+            ? Promise.resolve(null)
+            : fetch('./roms/pokemon-red-slot2.sav'),
         ]);
         if (romRes && romRes.ok) {
           BUNDLED_ROM_CACHE[version] = new Uint8Array(await romRes.arrayBuffer());
@@ -473,19 +595,273 @@ function createPartyMonster(speciesId: string, level: number): PartyMonster {
   };
 }
 
+interface VersionMetaConfig {
+  cartId: string;
+  title: string;
+  subtitle: string;
+  versionBanner: string;
+  description: string;
+  mascotId: string;
+  defaultStarterId: string;
+  gymLeaderName: string;
+  gymBossId: string;
+  badgeName: string;
+  primaryHex: string;
+  accentHex: string;
+  labelColor: string;
+  previewBg: string;
+  backdropHex: string;
+  romReadyLabel: string;
+  sgbPalette: [number, number, number, number];
+  slot1Name: string;
+  slot1Rival: string;
+  slot1Loc: string;
+  slot2Name: string;
+  slot2Rival: string;
+  slot2Loc: string;
+}
+
+const VERSION_CONFIGS: Record<VersionId, VersionMetaConfig> = {
+  RED: {
+    cartId: 'pokemon-red',
+    title: 'POKEMON RED',
+    subtitle: 'RED VERSION (GEN 1)',
+    versionBanner: 'RED VERSION',
+    description: 'Gen-1 Pokemon Red (Charizard, Pallet Town, Brock) + real .gb ROM emulator!',
+    mascotId: 'charizard',
+    defaultStarterId: 'charmander',
+    gymLeaderName: 'GYM BROCK',
+    gymBossId: 'onix',
+    badgeName: 'BOULDERBADGE',
+    primaryHex: '#d82828',
+    accentHex: '#ff7838',
+    labelColor: '#2a1014',
+    previewBg: '#280c10',
+    backdropHex: '#fff4f0',
+    romReadyLabel: '1MB GEN-1 ROM & SRAM READY',
+    sgbPalette: [0xfff4f0, 0xf89878, 0xd82828, 0x181018],
+    slot1Name: 'RED',
+    slot1Rival: 'BLUE',
+    slot1Loc: 'PALLET HOUSE',
+    slot2Name: 'ASH',
+    slot2Rival: 'GARY',
+    slot2Loc: 'PROF. OAK LAB',
+  },
+  BLUE: {
+    cartId: 'pokemon-blue',
+    title: 'POKEMON BLUE',
+    subtitle: 'BLUE VERSION (GEN 1)',
+    versionBanner: 'BLUE VERSION',
+    description: 'Gen-1 Pokemon Blue (Blastoise, Pallet Town, Misty) + real .gb ROM emulator!',
+    mascotId: 'blastoise',
+    defaultStarterId: 'squirtle',
+    gymLeaderName: 'GYM MISTY',
+    gymBossId: 'starmie',
+    badgeName: 'CASCADEBADGE',
+    primaryHex: '#1e58d8',
+    accentHex: '#48b8ff',
+    labelColor: '#101c38',
+    previewBg: '#0c1830',
+    backdropHex: '#f0f6ff',
+    romReadyLabel: '1MB GEN-1 ROM & SRAM READY',
+    sgbPalette: [0xf0f6ff, 0x68b8f8, 0x1e58d8, 0x101828],
+    slot1Name: 'BLUE',
+    slot1Rival: 'RED',
+    slot1Loc: 'PALLET HOUSE',
+    slot2Name: 'GARY',
+    slot2Rival: 'ASH',
+    slot2Loc: 'PROF. OAK LAB',
+  },
+  YELLOW: {
+    cartId: 'pokemon-yellow',
+    title: 'POKEMON YELLOW',
+    subtitle: 'SPECIAL PIKACHU EDITION',
+    versionBanner: 'YELLOW VERSION',
+    description: 'Special Pikachu Edition (GBC Colored) — Pikachu follows you across Kanto!',
+    mascotId: 'pikachu',
+    defaultStarterId: 'pikachu',
+    gymLeaderName: 'GYM BROCK',
+    gymBossId: 'onix',
+    badgeName: 'BOULDERBADGE',
+    primaryHex: '#e6b412',
+    accentHex: '#ffe048',
+    labelColor: '#2e2408',
+    previewBg: '#261e06',
+    backdropHex: '#fffbe8',
+    romReadyLabel: '1MB GBC PIKACHU ROM READY',
+    sgbPalette: [0xfffbe8, 0xf8d850, 0xd88818, 0x181408],
+    slot1Name: 'YELLOW',
+    slot1Rival: 'BLUE',
+    slot1Loc: 'PIKACHU INTRO',
+    slot2Name: 'ASH',
+    slot2Rival: 'GARY',
+    slot2Loc: 'KANTO MENU',
+  },
+  GOLD: {
+    cartId: 'pokemon-gold',
+    title: 'POKEMON GOLD',
+    subtitle: 'GOLD VERSION (GEN 2 GBC)',
+    versionBanner: 'GOLD VERSION',
+    description: 'Gen-2 Johto & Kanto adventure starring Ho-Oh on full-color Game Boy Color!',
+    mascotId: 'hooh',
+    defaultStarterId: 'charmander',
+    gymLeaderName: 'GYM FALKNER',
+    gymBossId: 'hooh',
+    badgeName: 'ZEPHYRBADGE',
+    primaryHex: '#c89218',
+    accentHex: '#ffd24c',
+    labelColor: '#281c06',
+    previewBg: '#221804',
+    backdropHex: '#fff9e6',
+    romReadyLabel: '2MB GEN-2 JOHTO GBC READY',
+    sgbPalette: [0xfff9e6, 0xf4c448, 0xb87814, 0x181206],
+    slot1Name: 'GOLD',
+    slot1Rival: 'SILVER',
+    slot1Loc: 'NEW BARK TOWN',
+    slot2Name: 'ETHAN',
+    slot2Rival: 'SILVER',
+    slot2Loc: 'JOHTO MENU',
+  },
+  SILVER: {
+    cartId: 'pokemon-silver',
+    title: 'POKEMON SILVER',
+    subtitle: 'SILVER VERSION (GEN 2 GBC)',
+    versionBanner: 'SILVER VERSION',
+    description: 'Gen-2 Johto & Kanto adventure starring Lugia on full-color Game Boy Color!',
+    mascotId: 'lugia',
+    defaultStarterId: 'squirtle',
+    gymLeaderName: 'GYM FALKNER',
+    gymBossId: 'lugia',
+    badgeName: 'ZEPHYRBADGE',
+    primaryHex: '#70849c',
+    accentHex: '#b8d0ec',
+    labelColor: '#161e28',
+    previewBg: '#121822',
+    backdropHex: '#f2f6fc',
+    romReadyLabel: '2MB GEN-2 JOHTO GBC READY',
+    sgbPalette: [0xf2f6fc, 0x98b4d4, 0x506884, 0x101620],
+    slot1Name: 'SILVER',
+    slot1Rival: 'GOLD',
+    slot1Loc: 'NEW BARK TOWN',
+    slot2Name: 'LUGIA',
+    slot2Rival: 'GOLD',
+    slot2Loc: 'JOHTO MENU',
+  },
+  CRYSTAL: {
+    cartId: 'pokemon-crystal',
+    title: 'POKEMON CRYSTAL',
+    subtitle: 'CRYSTAL VERSION (GBC)',
+    versionBanner: 'CRYSTAL VERSION',
+    description: 'Animated GBC sprites, Suicune quest, Battle Tower & Boy/Girl trainer select!',
+    mascotId: 'suicune',
+    defaultStarterId: 'squirtle',
+    gymLeaderName: 'GYM SUICUNE',
+    gymBossId: 'suicune',
+    badgeName: 'RISINGBADGE',
+    primaryHex: '#28a4cc',
+    accentHex: '#7ce8ff',
+    labelColor: '#0c2430',
+    previewBg: '#0a1e28',
+    backdropHex: '#eefbff',
+    romReadyLabel: '2MB CRYSTAL GBC ROM READY',
+    sgbPalette: [0xeefbff, 0x74dcf8, 0x2488b8, 0x0c1824],
+    slot1Name: 'KRIS',
+    slot1Rival: 'SILVER',
+    slot1Loc: 'BOY / GIRL SELECT',
+    slot2Name: 'ETHAN',
+    slot2Rival: 'SILVER',
+    slot2Loc: 'CRYSTAL MENU',
+  },
+  TCG: {
+    cartId: 'pokemon-tcg',
+    title: 'POKEMON TCG',
+    subtitle: 'TRADING CARD GAME (GBC)',
+    versionBanner: 'TRADING CARD GAME',
+    description: 'Build 60-card decks, win 8 Club Master Medals & claim the Legendary Cards!',
+    mascotId: 'charizard',
+    defaultStarterId: 'charmander',
+    gymLeaderName: 'GRAND MASTER',
+    gymBossId: 'mewtwo',
+    badgeName: 'MASTER MEDAL',
+    primaryHex: '#982838',
+    accentHex: '#f8a838',
+    labelColor: '#260c12',
+    previewBg: '#200a10',
+    backdropHex: '#fff4f2',
+    romReadyLabel: '1MB GBC CARD GAME ROM READY',
+    sgbPalette: [0xfff4f2, 0xf09868, 0x982838, 0x180c10],
+    slot1Name: 'MARK',
+    slot1Rival: 'RONALD',
+    slot1Loc: 'MASON CARD LAB',
+    slot2Name: 'RONALD',
+    slot2Rival: 'MARK',
+    slot2Loc: 'CARD CLUBS',
+  },
+  PINBALL: {
+    cartId: 'pokemon-pinball',
+    title: 'POKEMON PINBALL',
+    subtitle: 'RUMBLE PAK PINBALL (GBC)',
+    versionBanner: 'PINBALL GBC',
+    description: 'Catch all 151 Pokemon across the Red & Blue Pinball Tables on Game Boy Color!',
+    mascotId: 'pikachu',
+    defaultStarterId: 'pikachu',
+    gymLeaderName: 'MEWTWO BONUS',
+    gymBossId: 'mewtwo',
+    badgeName: 'HIGH SCORE',
+    primaryHex: '#e06818',
+    accentHex: '#ffd038',
+    labelColor: '#2a1608',
+    previewBg: '#241206',
+    backdropHex: '#fff6ec',
+    romReadyLabel: '1MB GBC PINBALL ROM READY',
+    sgbPalette: [0xfff6ec, 0xf8b048, 0xd85818, 0x181008],
+    slot1Name: 'RED TABLE',
+    slot1Rival: 'BLUE',
+    slot1Loc: 'TABLE SELECT',
+    slot2Name: 'BLUE TABLE',
+    slot2Rival: 'RED',
+    slot2Loc: 'TABLE SELECT',
+  },
+  PUZZLE: {
+    cartId: 'pokemon-puzzle',
+    title: 'POKEMON PUZZLE',
+    subtitle: 'PUZZLE CHALLENGE (GBC)',
+    versionBanner: 'PUZZLE CHALLENGE',
+    description: 'Fast-paced Johto Panel de Pon block puzzle battles against Gold & Gym Leaders!',
+    mascotId: 'pikachu',
+    defaultStarterId: 'bulbasaur',
+    gymLeaderName: 'CHAMPION LANCE',
+    gymBossId: 'charizard',
+    badgeName: 'PUZZLE TROPHY',
+    primaryHex: '#6c38b8',
+    accentHex: '#c488ff',
+    labelColor: '#1a0e2e',
+    previewBg: '#160a28',
+    backdropHex: '#f6f0ff',
+    romReadyLabel: '2MB GBC PUZZLE ROM READY',
+    sgbPalette: [0xf6f0ff, 0xb888f8, 0x6c38b8, 0x140a24],
+    slot1Name: '1P CHALLENGE',
+    slot1Rival: 'LANCE',
+    slot1Loc: 'MODE SELECT',
+    slot2Name: 'MARATHON',
+    slot2Rival: 'WHITNEY',
+    slot2Loc: 'MODE SELECT',
+  },
+};
+
 export function createPokemonVersionCartridge(version: VersionId): GameCartridge {
+  const cfg = VERSION_CONFIGS[version];
   const isRed = version === 'RED';
-  const cartId = isRed ? 'pokemon-red' : 'pokemon-blue';
-  const mascotId = isRed ? 'charizard' : 'blastoise';
-  const defaultStarterId = isRed ? 'charmander' : 'squirtle';
-  const gymLeaderName = isRed ? 'GYM BROCK' : 'GYM MISTY';
-  const gymBossId = isRed ? 'onix' : 'starmie';
-  const badgeName = isRed ? 'BOULDERBADGE' : 'CASCADEBADGE';
-  const primaryHex = isRed ? '#d82828' : '#1e58d8';
-  const accentHex = isRed ? '#ff7838' : '#48b8ff';
-  const sgbPalette: [number, number, number, number] = isRed
-    ? [0xfff4f0, 0xf89878, 0xd82828, 0x181018]
-    : [0xf0f6ff, 0x68b8f8, 0x1e58d8, 0x101828];
+  const isGen1Rb = version === 'RED' || version === 'BLUE';
+  const cartId = cfg.cartId;
+  const mascotId = cfg.mascotId;
+  const defaultStarterId = cfg.defaultStarterId;
+  const gymLeaderName = cfg.gymLeaderName;
+  const gymBossId = cfg.gymBossId;
+  const badgeName = cfg.badgeName;
+  const primaryHex = cfg.primaryHex;
+  const accentHex = cfg.accentHex;
+  const sgbPalette: [number, number, number, number] = cfg.sgbPalette;
 
   const wildPool = isRed
     ? ['charmander', 'pikachu', 'growlithe', 'bulbasaur', 'onix', 'mewtwo']
@@ -497,38 +873,38 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
     return [
       {
         slot: 0,
-        playerName: isRed ? 'RED' : 'BLUE',
-        rivalName: isRed ? 'BLUE' : 'RED',
-        badges: 1,
+        playerName: cfg.slot1Name,
+        rivalName: cfg.slot1Rival,
+        badges: isGen1Rb ? 1 : 0,
         badgesMask: isRed ? 0x01 : 0x02,
-        pokedexOwned: isRed ? 4 : 5,
-        hours: 2,
-        minutes: isRed ? 15 : 40,
-        locationLabel: 'PALLET HOUSE',
+        pokedexOwned: isGen1Rb ? (isRed ? 4 : 5) : 1,
+        hours: isGen1Rb ? 2 : 0,
+        minutes: isGen1Rb ? (isRed ? 15 : 40) : 15,
+        locationLabel: cfg.slot1Loc,
         hasSave: true,
       },
       {
         slot: 1,
-        playerName: isRed ? 'ASH' : 'GARY',
-        rivalName: isRed ? 'GARY' : 'ASH',
+        playerName: cfg.slot2Name,
+        rivalName: cfg.slot2Rival,
         badges: 8,
         badgesMask: 0xff,
-        pokedexOwned: 151,
+        pokedexOwned: version === 'GOLD' || version === 'SILVER' || version === 'CRYSTAL' ? 251 : 151,
         hours: isRed ? 42 : 38,
         minutes: isRed ? 30 : 45,
-        locationLabel: 'PROF. OAK LAB',
+        locationLabel: cfg.slot2Loc,
         hasSave: true,
       },
       {
         slot: 2,
         playerName: 'NEW TRAINER',
-        rivalName: isRed ? 'BLUE' : 'RED',
+        rivalName: cfg.slot1Rival,
         badges: 0,
         badgesMask: 0x00,
         pokedexOwned: 0,
         hours: 0,
         minutes: 0,
-        locationLabel: 'PROF. OAK INTRO',
+        locationLabel: 'FRESH NEW GAME',
         hasSave: false,
       },
     ];
@@ -578,6 +954,7 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
   }
 
   function buildDefaultSlotSram(prof: TrainerAccountProfile): number[] | null {
+    if (!isGen1Rb) return null;
     const baseSram = prof.slot === 1 ? BUNDLED_SLOT2_SRAM ?? BUNDLED_SLOT1_SRAM : BUNDLED_SLOT1_SRAM;
     if (!baseSram) return null;
     const isSlot2 = prof.slot === 1;
@@ -607,20 +984,24 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
     // Ensure each profile with hasSave has its own distinct 32KB SRAM in storage and sync live stats from SRAM
     for (const prof of state.profiles) {
       let sram = state.ctx.storage.loadData<number[] | null>(getProfileSramKey(prof.slot), null);
-      if ((!sram || sram.length < 0x3524) && prof.hasSave) {
-        const built = buildDefaultSlotSram(prof);
-        if (built) {
-          sram = built;
-          state.ctx.storage.saveData<number[]>(getProfileSramKey(prof.slot), sram);
+      if (isGen1Rb) {
+        if ((!sram || sram.length < 0x3524) && prof.hasSave) {
+          const built = buildDefaultSlotSram(prof);
+          if (built) {
+            sram = built;
+            state.ctx.storage.saveData<number[]>(getProfileSramKey(prof.slot), sram);
+          }
         }
-      }
-      const summary = parseGen1SramSummary(sram);
-      if (summary && summary.hasValidSave) {
-        prof.playerName = summary.playerName;
-        prof.badges = summary.badges;
-        prof.pokedexOwned = summary.pokedexOwned;
-        prof.hours = summary.hours;
-        prof.minutes = summary.minutes;
+        const summary = parseGen1SramSummary(sram);
+        if (summary && summary.hasValidSave) {
+          prof.playerName = summary.playerName;
+          prof.badges = summary.badges;
+          prof.pokedexOwned = summary.pokedexOwned;
+          prof.hours = summary.hours;
+          prof.minutes = summary.minutes;
+          prof.hasSave = true;
+        }
+      } else if (sram && sram.some((b) => b !== 0 && b !== 0xff)) {
         prof.hasSave = true;
       }
     }
@@ -639,7 +1020,7 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
     const prof = state.profiles[slot] ?? state.profiles[0];
 
     let sram = state.ctx?.storage.loadData<number[] | null>(getProfileSramKey(slot), null) ?? null;
-    if ((!sram || sram.length < 0x3524) && prof.hasSave) {
+    if (isGen1Rb && (!sram || sram.length < 0x3524) && prof.hasSave) {
       const built = buildDefaultSlotSram(prof);
       if (built) {
         sram = built;
@@ -648,13 +1029,14 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
     }
 
     const effectiveSram = bootTarget === 'OAK_INTRO' || !prof.hasSave ? null : sram;
-    const meta = hwEmulator.loadRom(`${cartId}.gb`, romBytes, effectiveSram, sgbPalette);
+    const romExt = isGen1Rb ? 'gb' : 'gbc';
+    const meta = hwEmulator.loadRom(`${cartId}.${romExt}`, romBytes, effectiveSram, sgbPalette);
     if (meta.isExecutable && hwEmulator.isRunningHardware()) {
       const target =
         (bootTarget === 'CONTINUE_INFO' || bootTarget === 'CONTINUE_GAME') && !prof.hasSave
           ? 'OAK_INTRO'
           : bootTarget;
-      hwEmulator.fastForwardGen1Boot(target);
+      hwEmulator.fastForwardPokemonVersionBoot(version, target);
       state.mode = 'EMU_ROM';
       state.ctx?.audio.stopBGM();
       return true;
@@ -673,23 +1055,39 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
     });
 
     if (hwEmulator.isRunningHardware()) {
-      const { sram, summary } = hwEmulator.extractGen1SramWithLiveSync();
-      if (sram.length > 0 && summary && summary.hasValidSave) {
-        const slot = state.activeProfileSlot;
-        state.ctx.storage.saveData<number[]>(getProfileSramKey(slot), sram);
-        state.ctx.storage.saveData<number[]>(`${cartId}-sram`, sram);
-        const prof = state.profiles[slot];
-        if (prof) {
-          prof.playerName = summary.playerName;
-          prof.badges = summary.badges;
-          prof.pokedexOwned = summary.pokedexOwned;
-          prof.hours = summary.hours;
-          prof.minutes = summary.minutes;
-          prof.hasSave = true;
-          state.ctx.storage.saveData<TrainerAccountProfile[]>(
-            `${cartId}-profiles-v4`,
-            state.profiles
-          );
+      const slot = state.activeProfileSlot;
+      if (isGen1Rb) {
+        const { sram, summary } = hwEmulator.extractGen1SramWithLiveSync();
+        if (sram.length > 0 && summary && summary.hasValidSave) {
+          state.ctx.storage.saveData<number[]>(getProfileSramKey(slot), sram);
+          state.ctx.storage.saveData<number[]>(`${cartId}-sram`, sram);
+          const prof = state.profiles[slot];
+          if (prof) {
+            prof.playerName = summary.playerName;
+            prof.badges = summary.badges;
+            prof.pokedexOwned = summary.pokedexOwned;
+            prof.hours = summary.hours;
+            prof.minutes = summary.minutes;
+            prof.hasSave = true;
+            state.ctx.storage.saveData<TrainerAccountProfile[]>(
+              `${cartId}-profiles-v4`,
+              state.profiles
+            );
+          }
+        }
+      } else {
+        const rawSram = hwEmulator.extractSram();
+        if (rawSram.length > 0 && rawSram.some((b) => b !== 0 && b !== 0xff)) {
+          state.ctx.storage.saveData<number[]>(getProfileSramKey(slot), rawSram);
+          state.ctx.storage.saveData<number[]>(`${cartId}-sram`, rawSram);
+          const prof = state.profiles[slot];
+          if (prof && !prof.hasSave) {
+            prof.hasSave = true;
+            state.ctx.storage.saveData<TrainerAccountProfile[]>(
+              `${cartId}-profiles-v4`,
+              state.profiles
+            );
+          }
         }
       }
     }
@@ -1179,8 +1577,8 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
   }
 
   function renderProfiles(ctx: CanvasRenderingContext2D): void {
-    // Super Game Boy Red / Blue border & cream backdrop
-    ctx.fillStyle = isRed ? '#fff4f0' : '#f0f6ff';
+    // Super Game Boy / GBC themed backdrop
+    ctx.fillStyle = cfg.backdropHex;
     ctx.fillRect(0, 0, 160, 144);
 
     // Top Version & ROM Status Banner
@@ -1189,7 +1587,7 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
     ctx.fillStyle = accentHex;
     ctx.fillRect(0, 20, 160, 2);
 
-    drawPixelText(ctx, `POKEMON ${version} - ACCOUNTS`, 80, 3, {
+    drawPixelText(ctx, `${cfg.title} - ACCOUNTS`, 80, 3, {
       color: '#f8e838',
       size: 5,
       align: 'center',
@@ -1197,7 +1595,7 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
     });
     drawPixelText(
       ctx,
-      state.romReady ? '1MB GEN-1 ROM & SRAM READY' : 'LOADING GEN-1 ROM...',
+      state.romReady ? cfg.romReadyLabel : `LOADING ${version} ROM...`,
       80,
       12,
       {
@@ -1279,8 +1677,8 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
   }
 
   function renderTitle(ctx: CanvasRenderingContext2D): void {
-    // Super Game Boy Red / Blue border & cream backdrop
-    ctx.fillStyle = isRed ? '#fff4f0' : '#f0f6ff';
+    // Super Game Boy / GBC themed backdrop
+    ctx.fillStyle = cfg.backdropHex;
     ctx.fillRect(0, 0, 160, 144);
 
     // Top Version Banner
@@ -1295,13 +1693,13 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
       align: 'center',
       shadow: '#181818',
     });
-    drawPixelText(ctx, isRed ? 'RED VERSION' : 'BLUE VERSION', 80, 17, {
+    drawPixelText(ctx, cfg.versionBanner, 80, 17, {
       color: '#ffffff',
       size: 5,
       align: 'center',
     });
 
-    // Mascot (Charizard or Blastoise) + Trainer Red/Blue showcase
+    // Mascot + Trainer showcase
     const mascot = getSpecies(mascotId);
     const bounce = Math.round(Math.sin(state.animTime * 4) * 1.5);
     drawMonsterSprite(ctx, mascot, 22, 34 + bounce, 3);
@@ -1309,8 +1707,8 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
       ctx,
       106,
       44,
-      isRed ? '#d82828' : '#2060d8',
-      isRed ? '#f83838' : '#2888f8',
+      primaryHex,
+      accentHex,
       2
     );
 
@@ -1629,18 +2027,16 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
 
   return {
     id: cartId,
-    title: isRed ? 'POKEMON RED' : 'POKEMON BLUE',
-    subtitle: isRed ? 'RED VERSION (GEN 1)' : 'BLUE VERSION (GEN 1)',
+    title: cfg.title,
+    subtitle: cfg.subtitle,
     genre: 'RPG / EMU',
-    description: isRed
-      ? 'Gen-1 Pokemon Red (Charizard, Pallet Town, Brock) + real .gb ROM emulator!'
-      : 'Gen-1 Pokemon Blue (Blastoise, Pallet Town, Misty) + real .gb ROM emulator!',
+    description: cfg.description,
     cartridgeColor: primaryHex,
-    labelColor: isRed ? '#2a1014' : '#101c38',
+    labelColor: cfg.labelColor,
     accentColor: accentHex,
 
     renderPreviewIcon(ctx, x, y, w, h, time) {
-      ctx.fillStyle = isRed ? '#280c10' : '#0c1830';
+      ctx.fillStyle = cfg.previewBg;
       ctx.fillRect(x, y, w, h);
 
       const mascot = getSpecies(mascotId);
@@ -1727,9 +2123,9 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
       );
       const meta = hwEmulator.loadRom(fileName, bytes, savedSram, sgbPalette);
       if (meta.isExecutable && hwEmulator.isRunningHardware()) {
-        hwEmulator.fastForwardGen1Boot('TITLE');
+        hwEmulator.fastForwardPokemonVersionBoot(version, 'TITLE');
         state.mode = 'EMU_ROM';
-        state.ctx?.audio.startBGM('monster_town');
+        state.ctx?.audio.stopBGM();
       } else {
         state.mode = 'PROFILES';
       }
@@ -1903,4 +2299,11 @@ function drawMonsterSprite(
 
 export const pokemonRedCartridge = createPokemonVersionCartridge('RED');
 export const pokemonBlueCartridge = createPokemonVersionCartridge('BLUE');
+export const pokemonYellowCartridge = createPokemonVersionCartridge('YELLOW');
+export const pokemonGoldCartridge = createPokemonVersionCartridge('GOLD');
+export const pokemonSilverCartridge = createPokemonVersionCartridge('SILVER');
+export const pokemonCrystalCartridge = createPokemonVersionCartridge('CRYSTAL');
+export const pokemonTcgCartridge = createPokemonVersionCartridge('TCG');
+export const pokemonPinballCartridge = createPokemonVersionCartridge('PINBALL');
+export const pokemonPuzzleCartridge = createPokemonVersionCartridge('PUZZLE');
 export const pocketMonstersCartridge = pokemonRedCartridge;

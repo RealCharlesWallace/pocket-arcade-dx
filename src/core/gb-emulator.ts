@@ -40,6 +40,9 @@ const MBC_NAMES: Record<number, string> = {
   0x19: 'MBC5',
   0x1a: 'MBC5+RAM',
   0x1b: 'MBC5+RAM+BATT',
+  0x1c: 'MBC5+RUMBLE',
+  0x1d: 'MBC5+RUMBLE+SRAM',
+  0x1e: 'MBC5+RUMBLE+SRAM+BATT',
   0x22: 'MBC7+TILT+SRAM+BATT',
 };
 
@@ -478,6 +481,91 @@ export class GBHardwareEmulator {
       // Press A on NEW GAME to enter Professor Oak's intro speech
       tapKey(4, 14, 240);
     }
+  }
+
+  /**
+   * Fast-forwards any of the 9 bundled Pokémon Game Boy / Game Boy Color ROMs
+   * (`RED`, `BLUE`, `YELLOW`, `GOLD`, `SILVER`, `CRYSTAL`, `TCG`, `PINBALL`, `PUZZLE`)
+   * past its copyright / Game Freak intro directly to its Title Screen (`'TITLE'`) or
+   * into its Main Menu / Saved Overworld / Professor Oak Intro.
+   */
+  fastForwardPokemonVersionBoot(
+    version:
+      | 'RED'
+      | 'BLUE'
+      | 'YELLOW'
+      | 'GOLD'
+      | 'SILVER'
+      | 'CRYSTAL'
+      | 'TCG'
+      | 'PINBALL'
+      | 'PUZZLE',
+    target: 'TITLE' | 'MAIN_MENU' | 'CONTINUE_INFO' | 'CONTINUE_GAME' | 'OAK_INTRO' = 'TITLE'
+  ): void {
+    if (!this.gb) return;
+    if (version === 'RED' || version === 'BLUE') {
+      this.fastForwardGen1Boot(target);
+      return;
+    }
+
+    const tapKey = (code: number, hold = 14, wait = 180) => {
+      this.gb.JoyPadEvent(code, true);
+      for (let i = 0; i < hold; i++) this.gb.run();
+      this.gb.JoyPadEvent(code, false);
+      for (let i = 0; i < wait; i++) this.gb.run();
+    };
+
+    if (version === 'YELLOW') {
+      // Skip Surfing Pikachu intro onto the animated Pikachu Title Screen
+      for (let i = 0; i < 680; i++) this.gb.run();
+      tapKey(7, 14, 260);
+      if (target === 'TITLE') return;
+
+      // Advance to Main Menu (CONTINUE / NEW GAME / OPTION)
+      tapKey(7, 14, 140);
+      if (target === 'MAIN_MENU') return;
+
+      const hasSave = this.gb.memory[0xd087] === 2 || this.gb.memory[0xd088] === 2;
+      if ((target === 'CONTINUE_INFO' || target === 'CONTINUE_GAME') && hasSave) {
+        tapKey(4, 14, 150);
+        if (target === 'CONTINUE_GAME') {
+          tapKey(4, 16, 220);
+        }
+        return;
+      }
+
+      if (hasSave) {
+        tapKey(3, 12, 45);
+      }
+      // Enter full-color Professor Oak & Pikachu intro
+      tapKey(4, 14, 280);
+      return;
+    }
+
+    if (version === 'GOLD' || version === 'SILVER' || version === 'CRYSTAL') {
+      // Skip Gen-2 Game Freak & opening movie onto Ho-Oh / Lugia / Suicune Title Screen
+      for (let i = 0; i < 900; i++) this.gb.run();
+      tapKey(7, 15, 260);
+      if (target === 'TITLE') return;
+
+      // Advance to CONTINUE / NEW GAME / OPTION menu
+      tapKey(7, 15, 180);
+      if (target === 'MAIN_MENU') return;
+
+      if (version === 'CRYSTAL') {
+        // Press A on CONTINUE (if saved) or NEW GAME (opens Boy / Girl selector)
+        tapKey(4, 15, 180);
+      }
+      return;
+    }
+
+    // Spin-off GBC titles: Pokémon Trading Card Game, Pokémon Pinball, Pokémon Puzzle Challenge
+    for (let i = 0; i < 780; i++) this.gb.run();
+    tapKey(7, 15, 220);
+    if (target === 'TITLE') return;
+
+    // Advance past Title Screen into Main Menu / Table Select / Mode Select
+    tapKey(7, 15, 220);
   }
 
   /**

@@ -4,7 +4,17 @@ import { InputManager } from './core/input';
 import { GBC_HEIGHT, GBC_SCALE, GBC_WIDTH } from './core/pixel-renderer';
 import { ACHIEVEMENTS, CartridgeStorage, formatDuration } from './core/storage';
 import { CARTRIDGE_REGISTRY } from './games/registry';
-import { pokemonBlueCartridge, pokemonRedCartridge } from './games/pocket-monsters';
+import {
+  pokemonBlueCartridge,
+  pokemonCrystalCartridge,
+  pokemonGoldCartridge,
+  pokemonPinballCartridge,
+  pokemonPuzzleCartridge,
+  pokemonRedCartridge,
+  pokemonSilverCartridge,
+  pokemonTcgCartridge,
+  pokemonYellowCartridge,
+} from './games/pocket-monsters';
 import { romLoaderCartridge } from './games/rom-loader';
 import { GBCSystemOS } from './games/system-os';
 import { SHELL_THEMES } from './stage/gbc-model';
@@ -716,6 +726,20 @@ function bootstrap(): void {
       targetCart = pokemonRedCartridge;
     } else if (currentCart.id === 'pokemon-blue' || lowerName.includes('blue')) {
       targetCart = pokemonBlueCartridge;
+    } else if (currentCart.id === 'pokemon-yellow' || lowerName.includes('yellow')) {
+      targetCart = pokemonYellowCartridge;
+    } else if (currentCart.id === 'pokemon-gold' || lowerName.includes('gold')) {
+      targetCart = pokemonGoldCartridge;
+    } else if (currentCart.id === 'pokemon-silver' || lowerName.includes('silver')) {
+      targetCart = pokemonSilverCartridge;
+    } else if (currentCart.id === 'pokemon-crystal' || lowerName.includes('crystal')) {
+      targetCart = pokemonCrystalCartridge;
+    } else if (currentCart.id === 'pokemon-tcg' || lowerName.includes('tcg') || lowerName.includes('card')) {
+      targetCart = pokemonTcgCartridge;
+    } else if (currentCart.id === 'pokemon-pinball' || lowerName.includes('pinball')) {
+      targetCart = pokemonPinballCartridge;
+    } else if (currentCart.id === 'pokemon-puzzle' || lowerName.includes('puzzle')) {
+      targetCart = pokemonPuzzleCartridge;
     }
 
     targetCart.onRomLoaded?.(file.name, bytes);
