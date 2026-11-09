@@ -291,6 +291,26 @@ export class GBHardwareEmulator {
     start: false,
     select: false,
   };
+  private minHoldSlices: Record<GBCButton, number> = {
+    up: 0,
+    down: 0,
+    left: 0,
+    right: 0,
+    a: 0,
+    b: 0,
+    start: 0,
+    select: 0,
+  };
+  private retriggerGapSlices: Record<GBCButton, number> = {
+    up: 0,
+    down: 0,
+    left: 0,
+    right: 0,
+    a: 0,
+    b: 0,
+    start: 0,
+    select: 0,
+  };
 
   private frameCanvas: HTMLCanvasElement;
   private frameCtx: CanvasRenderingContext2D;
@@ -322,6 +342,8 @@ export class GBHardwareEmulator {
 
     for (const { btn } of GB_KEY_MAP) {
       this.prevHeld[btn] = false;
+      this.minHoldSlices[btn] = 0;
+      this.retriggerGapSlices[btn] = 0;
     }
 
     if (!meta.isExecutable) {
@@ -571,11 +593,28 @@ export class GBHardwareEmulator {
   step(dt: number, input: InputState): void {
     if (!this.gb) return;
 
-    for (const { btn, code } of GB_KEY_MAP) {
-      const isDown = Boolean(input.held[btn]);
-      if (isDown !== this.prevHeld[btn]) {
-        this.prevHeld[btn] = isDown;
-        this.gb.JoyPadEvent(code, isDown);
+    const dpadDirs: ReadonlyArray<GBCButton> = ['up', 'down', 'left', 'right'];
+    for (const { btn } of GB_KEY_MAP) {
+      if (input.justPressed[btn]) {
+        const isDpad = dpadDirs.includes(btn);
+        if (isDpad) {
+          // Immediately cancel lingering hold on any other D-Pad direction when changing direction
+          for (const d of dpadDirs) {
+            if (d !== btn && !input.held[d]) {
+              this.minHoldSlices[d] = 0;
+              this.retriggerGapSlices[d] = 0;
+            }
+          }
+          if (this.prevHeld[btn]) {
+            this.retriggerGapSlices[btn] = 3;
+          }
+          this.minHoldSlices[btn] = 12;
+        } else {
+          if (this.prevHeld[btn]) {
+            this.retriggerGapSlices[btn] = 3;
+          }
+          this.minHoldSlices[btn] = 8;
+        }
       }
     }
 
@@ -583,6 +622,22 @@ export class GBHardwareEmulator {
     this.cycleAccum += clampedDt;
     let slices = 0;
     while (this.cycleAccum >= 0.008 && slices < 4) {
+      for (const { btn, code } of GB_KEY_MAP) {
+        let wantDown = false;
+        if (this.retriggerGapSlices[btn] > 0) {
+          wantDown = false;
+          this.retriggerGapSlices[btn]--;
+        } else {
+          wantDown = Boolean(input.held[btn] || this.minHoldSlices[btn] > 0);
+          if (this.minHoldSlices[btn] > 0) {
+            this.minHoldSlices[btn]--;
+          }
+        }
+        if (wantDown !== this.prevHeld[btn]) {
+          this.prevHeld[btn] = wantDown;
+          this.gb.JoyPadEvent(code, wantDown);
+        }
+      }
       this.gb.run();
       this.cycleAccum -= 0.008;
       slices++;

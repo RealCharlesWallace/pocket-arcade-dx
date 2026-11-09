@@ -19,6 +19,7 @@ export class GBCSystemOS {
   private pauseCursor = 0; // 0: Resume, 1: Restart, 2: Eject to Menu
   private time = 0;
   private transitionTimer = 0;
+  private dpadRepeatTimer = 0;
 
   private context: GameContext;
   private onCartridgeChanged: (cart: GameCartridge | null) => void;
@@ -104,12 +105,31 @@ export class GBCSystemOS {
     }
 
     if (this.phase === 'CAROUSEL') {
-      if (input.justPressed.left || input.justPressed.up) {
+      const anyDpadHeld =
+        input.held.left || input.held.right || input.held.up || input.held.down;
+      if (!anyDpadHeld) {
+        this.dpadRepeatTimer = 0;
+      } else if (this.dpadRepeatTimer > 0) {
+        this.dpadRepeatTimer -= dt;
+      }
+
+      const prevTrigger =
+        input.justPressed.left ||
+        input.justPressed.up ||
+        ((input.held.left || input.held.up) && this.dpadRepeatTimer <= 0);
+      const nextTrigger =
+        input.justPressed.right ||
+        input.justPressed.down ||
+        ((input.held.right || input.held.down) && this.dpadRepeatTimer <= 0);
+
+      if (prevTrigger) {
+        this.dpadRepeatTimer = input.justPressed.left || input.justPressed.up ? 0.26 : 0.14;
         this.selectedIndex =
           (this.selectedIndex + CARTRIDGE_REGISTRY.length - 1) % CARTRIDGE_REGISTRY.length;
         this.context.audio.playMenuMove();
         this.onCartridgeChanged(this.getSelectedCartridge());
-      } else if (input.justPressed.right || input.justPressed.down) {
+      } else if (nextTrigger) {
+        this.dpadRepeatTimer = input.justPressed.right || input.justPressed.down ? 0.26 : 0.14;
         this.selectedIndex = (this.selectedIndex + 1) % CARTRIDGE_REGISTRY.length;
         this.context.audio.playMenuMove();
         this.onCartridgeChanged(this.getSelectedCartridge());
@@ -126,10 +146,19 @@ export class GBCSystemOS {
         this.phase = 'PLAYING';
         return;
       }
-      if (input.justPressed.up && this.pauseCursor > 0) {
+      if (!input.held.up && !input.held.down) {
+        this.dpadRepeatTimer = 0;
+      } else if (this.dpadRepeatTimer > 0) {
+        this.dpadRepeatTimer -= dt;
+      }
+      const upTrig = input.justPressed.up || (input.held.up && this.dpadRepeatTimer <= 0);
+      const downTrig = input.justPressed.down || (input.held.down && this.dpadRepeatTimer <= 0);
+      if (upTrig && this.pauseCursor > 0) {
+        this.dpadRepeatTimer = input.justPressed.up ? 0.24 : 0.12;
         this.pauseCursor--;
         this.context.audio.playMenuMove();
-      } else if (input.justPressed.down && this.pauseCursor < 3) {
+      } else if (downTrig && this.pauseCursor < 3) {
+        this.dpadRepeatTimer = input.justPressed.down ? 0.24 : 0.12;
         this.pauseCursor++;
         this.context.audio.playMenuMove();
       } else if (input.justPressed.a || input.justPressed.start) {

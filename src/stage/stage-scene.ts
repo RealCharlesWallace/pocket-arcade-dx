@@ -201,24 +201,19 @@ export class StageScene {
     clientY: number,
     initialBtn?: GBCButton
   ): void {
-    if (initialBtn) {
-      this.dpadInitialBtn = initialBtn;
-    }
-
     const dx = clientX - this.dpadScreenX;
     const dy = clientY - this.dpadScreenY;
     const dist = Math.hypot(dx, dy);
     const rad = Math.max(28, this.dpadRadiusPx);
 
     // If the user's finger slides off the D-Pad arrows onto the shell/screen, cleanly release!
-    if (dist > rad * 1.42) {
+    if (dist > rad * 1.65) {
       this.dpadInitialBtn = null;
       this.releaseDpadButtons();
       return;
     }
 
-    const activeInitial = this.dpadInitialBtn;
-    if (dist < rad * 0.08 && !activeInitial) {
+    if (dist < 3 && !initialBtn && !this.dpadInitialBtn) {
       this.gbc.setDpadSlideVector(0, 0);
       this.onVirtualButton('up', false);
       this.onVirtualButton('down', false);
@@ -227,26 +222,44 @@ export class StageScene {
       return;
     }
 
-    let ux = dist > 1 ? dx / dist : 0;
-    let uy = dist > 1 ? dy / dist : 0;
-    if (dist < rad * 0.28 && activeInitial) {
-      ux = activeInitial === 'right' ? 1 : activeInitial === 'left' ? -1 : 0;
-      uy = activeInitial === 'down' ? 1 : activeInitial === 'up' ? -1 : 0;
-    } else if (dist >= rad * 0.28) {
-      this.dpadInitialBtn = null;
+    // Pure 4-way cardinal quadrant resolution with hysteresis so every arrow has a full 90-degree
+    // responsive wedge and never triggers perpendicular directions simultaneously
+    let chosenDir: 'up' | 'down' | 'left' | 'right';
+    if (dist < 5 && (initialBtn || this.dpadInitialBtn)) {
+      chosenDir = (initialBtn || this.dpadInitialBtn) as 'up' | 'down' | 'left' | 'right';
+    } else if (!initialBtn && (this.dpadInitialBtn === 'left' || this.dpadInitialBtn === 'right')) {
+      if (Math.abs(dy) > Math.abs(dx) * 1.18) {
+        chosenDir = dy < 0 ? 'up' : 'down';
+      } else {
+        chosenDir = dx < 0 ? 'left' : 'right';
+      }
+    } else if (!initialBtn && (this.dpadInitialBtn === 'up' || this.dpadInitialBtn === 'down')) {
+      if (Math.abs(dx) > Math.abs(dy) * 1.18) {
+        chosenDir = dx < 0 ? 'left' : 'right';
+      } else {
+        chosenDir = dy < 0 ? 'up' : 'down';
+      }
+    } else {
+      chosenDir =
+        Math.abs(dx) >= Math.abs(dy)
+          ? dx < 0
+            ? 'left'
+            : 'right'
+          : dy < 0
+            ? 'up'
+            : 'down';
     }
 
-    const mag = Math.min(1, Math.max(0.65, dist / (rad * 0.80)));
-    this.gbc.setDpadSlideVector(ux * mag, uy * mag);
+    this.dpadInitialBtn = chosenDir;
 
-    // Responsive 4-cardinal + 45-degree corner diagonal sector detection
-    // 0.56 (~34 deg) gives each cardinal arrow (UP/DOWN/LEFT/RIGHT) a wide 68-degree pure zone
-    // so slightly off-center thumb presses never accidentally trigger perpendicular directions
-    const diagThreshold = 0.56;
-    this.onVirtualButton('up', uy < -diagThreshold);
-    this.onVirtualButton('down', uy > diagThreshold);
-    this.onVirtualButton('left', ux < -diagThreshold);
-    this.onVirtualButton('right', ux > diagThreshold);
+    const vecX = chosenDir === 'right' ? 1 : chosenDir === 'left' ? -1 : 0;
+    const vecY = chosenDir === 'down' ? 1 : chosenDir === 'up' ? -1 : 0;
+    this.gbc.setDpadSlideVector(vecX * 0.92, vecY * 0.92);
+
+    this.onVirtualButton('up', chosenDir === 'up');
+    this.onVirtualButton('down', chosenDir === 'down');
+    this.onVirtualButton('left', chosenDir === 'left');
+    this.onVirtualButton('right', chosenDir === 'right');
   }
 
   private clearAllHovers(): void {
@@ -353,9 +366,9 @@ export class StageScene {
     });
 
     container.addEventListener('pointerdown', (e) => {
-      // Check if pointer started anywhere inside the D-Pad circular zone (including diagonal corners!)
+      // Check if pointer started anywhere inside the D-Pad circular zone (including outer rim & corners!)
       const dpadDist = Math.hypot(e.clientX - this.dpadScreenX, e.clientY - this.dpadScreenY);
-      if (dpadDist <= this.dpadRadiusPx * 1.32) {
+      if (dpadDist <= this.dpadRadiusPx * 1.55) {
         this.dpadPointerId = e.pointerId;
         this.updateDpadFromScreenPoint(e.clientX, e.clientY);
         return;
@@ -525,18 +538,19 @@ export class StageScene {
       this.tiltHudEl.style.top = `${clampedY.toFixed(1)}px`;
     }
 
-    // Compute exact screen-space center & radius of the 3D D-Pad for 360-degree angle sliding
-    this.tempCenter.set(0, 0, 0.08);
-    this.tempEdge.set(0.48, 0, 0.08);
-    this.gbc.dpadGroup.localToWorld(this.tempCenter);
-    this.gbc.dpadGroup.localToWorld(this.tempEdge);
+    // Compute exact stationary screen-space center & radius of the 3D D-Pad socket on gbc.root
+    // (Using gbc.root rather than dpadGroup ensures the screen center never shifts when the D-Pad tilts!)
+    this.tempCenter.set(-0.80, -0.96, 0.56);
+    this.tempEdge.set(-0.80 + 0.48, -0.96, 0.56);
+    this.gbc.root.localToWorld(this.tempCenter);
+    this.gbc.root.localToWorld(this.tempEdge);
     this.tempCenter.project(this.camera);
     this.tempEdge.project(this.camera);
     this.dpadScreenX = (this.tempCenter.x * 0.5 + 0.5) * cw;
     this.dpadScreenY = (-this.tempCenter.y * 0.5 + 0.5) * ch;
     const edgeScreenX = (this.tempEdge.x * 0.5 + 0.5) * cw;
     const edgeScreenY = (-this.tempEdge.y * 0.5 + 0.5) * ch;
-    this.dpadRadiusPx = Math.max(32, Math.hypot(edgeScreenX - this.dpadScreenX, edgeScreenY - this.dpadScreenY));
+    this.dpadRadiusPx = Math.max(36, Math.hypot(edgeScreenX - this.dpadScreenX, edgeScreenY - this.dpadScreenY));
 
     // Center the #gate Power-On card directly inside the enlarged 3D LCD screen
     if (this.gateEl && !this.gateEl.hasAttribute('hidden') && this.gbc.lcdMesh) {
@@ -577,25 +591,30 @@ export class StageScene {
 
       const isPill = btn === 'select' || btn === 'start';
       const isActionRound = btn === 'a' || btn === 'b';
-      const isDpadArrow = btn === 'up' || btn === 'down' || btn === 'left' || btn === 'right';
-      const dpadOffsetX = btn === 'left' ? -6 : btn === 'right' ? 6 : 0;
-      const dpadOffsetY = btn === 'up' ? -6 : btn === 'down' ? 6 : 0;
+      const isVerticalArrow = btn === 'up' || btn === 'down';
+      const isHorizontalArrow = btn === 'left' || btn === 'right';
+      const dpadOffsetX = btn === 'left' ? -10 : btn === 'right' ? 10 : 0;
+      const dpadOffsetY = btn === 'up' ? -10 : btn === 'down' ? 10 : 0;
       const adjScreenX = screenX + dpadOffsetX;
       const screenY = isPill ? rawScreenY + 4 : rawScreenY + dpadOffsetY;
       const pxW = isPill
         ? Math.max(54, rawPxW)
         : isActionRound
           ? Math.max(52, rawPxW)
-          : isDpadArrow
-            ? Math.max(46, rawPxW)
-            : rawPxW;
+          : isHorizontalArrow
+            ? Math.max(50, rawPxW)
+            : isVerticalArrow
+              ? Math.max(36, rawPxW)
+              : rawPxW;
       const pxH = isPill
         ? Math.max(44, rawPxH)
         : isActionRound
           ? Math.max(52, rawPxH)
-          : isDpadArrow
-            ? Math.max(46, rawPxH)
-            : rawPxH;
+          : isVerticalArrow
+            ? Math.max(50, rawPxH)
+            : isHorizontalArrow
+              ? Math.max(36, rawPxH)
+              : rawPxH;
       this.btnScreenRects[btn] = { x: adjScreenX, y: screenY, w: pxW, h: pxH };
 
       const inViewport = screenY > 10 && screenY < ch - 12 && adjScreenX > 4 && adjScreenX < cw - 4;

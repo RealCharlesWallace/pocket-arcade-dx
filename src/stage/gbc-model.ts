@@ -1099,7 +1099,7 @@ export class GameBoyColor3D {
   }
 
   update(dt: number): void {
-    const speed = Math.min(1, dt * 24);
+    const speed = Math.min(1, dt * 42);
     (Object.keys(this.buttonTargets) as GBCButton[]).forEach((k) => {
       this.buttonCurrent[k] += (this.buttonTargets[k] - this.buttonCurrent[k]) * speed;
       this.hoverCurrent[k] += (this.buttonHover[k] - this.hoverCurrent[k]) * speed;
@@ -1112,8 +1112,8 @@ export class GameBoyColor3D {
     const effDirX = hasSlide ? this.dpadSlideX : discreteDirX;
     const effDirY = hasSlide ? this.dpadSlideY : discreteDirY;
 
-    const pressTiltX = effDirY * 0.24;
-    const pressTiltY = effDirX * 0.24;
+    const pressTiltX = effDirY * 0.26;
+    const pressTiltY = effDirX * 0.26;
     const hoverTiltX = (this.hoverCurrent.down - this.hoverCurrent.up) * 0.07;
     const hoverTiltY = (this.hoverCurrent.right - this.hoverCurrent.left) * 0.07;
     this.dpadGroup.rotation.x = pressTiltX + hoverTiltX;
@@ -1134,7 +1134,7 @@ export class GameBoyColor3D {
     );
     this.dpadGroup.position.x = -0.80 + effDirX * 0.022;
     this.dpadGroup.position.y = -0.96 - effDirY * 0.022;
-    this.dpadGroup.position.z = 0.476 + dpadHover * 0.012 - dpadDepress * 0.020;
+    this.dpadGroup.position.z = 0.476 + dpadHover * 0.012 - dpadDepress * 0.022;
 
     const oppMap: Record<'up' | 'down' | 'left' | 'right', 'up' | 'down' | 'left' | 'right'> = {
       up: 'down',
@@ -1153,7 +1153,7 @@ export class GameBoyColor3D {
 
       if (armGroup) {
         // Pressed arm physically sinks into the recessed well while staying proud of the well floor (z > 0.434)
-        armGroup.position.z = -p * 0.018 + opp * 0.014 + h * 0.006;
+        armGroup.position.z = -p * 0.020 + opp * 0.014 + h * 0.006;
         armGroup.scale.set(1 - p * 0.03, 1 - p * 0.03, 1 - p * 0.16);
       }
       if (armMat) {
@@ -1162,10 +1162,10 @@ export class GameBoyColor3D {
         armMat.color.setRGB(0.12 * shade, 0.137 * shade, 0.16 * shade);
       }
       if (arrowMat) {
-        const arrowShade = Math.max(0.50, Math.min(1.38, 1.0 - p * 0.44 + opp * 0.28 + h * 0.15));
+        const arrowShade = Math.max(0.50, Math.min(1.42, 1.0 - p * 0.25 + opp * 0.28 + h * 0.15));
         arrowMat.color.setRGB(0.23 * arrowShade, 0.26 * arrowShade, 0.31 * arrowShade);
-        arrowMat.emissive.setHex(0x000000);
-        arrowMat.emissiveIntensity = 0;
+        arrowMat.emissive.setHex(0x46b8b8);
+        arrowMat.emissiveIntensity = p * 0.42;
       }
     }
 

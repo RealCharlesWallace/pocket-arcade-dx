@@ -292,12 +292,12 @@ export class InputManager {
     const now = performance.now();
     if (pressed) {
       this.notifyAnyInput();
-      this.latchedPress[btn] = true;
       if (!this.pointerHeld[btn]) {
+        this.latchedPress[btn] = true;
         this.pointerPressTimeMs[btn] = now;
-        this.pointerMinHoldUntilMs[btn] = now + 45;
+        this.pointerMinHoldUntilMs[btn] = now + 85;
       }
-      // If pressing a D-Pad direction, immediately clear any lingering min-hold on released directions
+      // If pressing a D-Pad direction, immediately clear any lingering min-hold on other directions
       if (btn === 'up' || btn === 'down' || btn === 'left' || btn === 'right') {
         for (const d of ['up', 'down', 'left', 'right'] as const) {
           if (d !== btn && !this.pointerHeld[d]) {
@@ -306,8 +306,8 @@ export class InputManager {
         }
       }
     } else if (this.pointerHeld[btn]) {
-      // If the user held the button for >= 45ms and now released/moved off it, stop immediately (0ms tail)
-      if (now - this.pointerPressTimeMs[btn] >= 45) {
+      // If the user held the button for >= 85ms and now released/moved off it, stop immediately (0ms tail)
+      if (now - this.pointerPressTimeMs[btn] >= 85) {
         this.pointerMinHoldUntilMs[btn] = 0;
       }
     }
@@ -345,16 +345,20 @@ export class InputManager {
     const now = performance.now();
 
     for (const b of ALL_BUTTONS) {
+      const wasLatched = this.latchedPress[b];
+      this.latchedPress[b] = false;
       const isNowHeld = Boolean(
         this.keyHeld[b] ||
           this.pointerHeld[b] ||
           padHeld[b] ||
-          this.latchedPress[b] ||
+          wasLatched ||
           now < this.pointerMinHoldUntilMs[b]
       );
-      this.latchedPress[b] = false;
+      if (isNowHeld !== this.prevCombined[b]) {
+        this.emitButtonChange(b, isNowHeld);
+      }
       held[b] = isNowHeld;
-      justPressed[b] = isNowHeld && !this.prevCombined[b];
+      justPressed[b] = Boolean(wasLatched || (isNowHeld && !this.prevCombined[b]));
       justReleased[b] = !isNowHeld && this.prevCombined[b];
       this.prevCombined[b] = isNowHeld;
     }
