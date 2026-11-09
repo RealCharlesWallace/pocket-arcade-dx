@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0f1110">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Pocket Arcade">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <title>Pocket Arcade DX · 3D Handheld Game Console</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%236b3fa0'/%3E%3Crect x='5' y='4' width='22' height='15' rx='2' fill='%239bbc0f'/%3E%3Crect x='7' y='22' width='6' height='2' fill='%23222'/%3E%3Crect x='9' y='20' width='2' height='6' fill='%23222'/%3E%3Ccircle cx='23' cy='22' r='2' fill='%23e83058'/%3E%3Ccircle cx='19' cy='24' r='2' fill='%23e83058'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Handjet:wght,ELGR,ELSH@100..900,1.3,1.9&family=Press+Start+2P&display=swap">
+  <script type="module" crossorigin src="./assets/index-Duhob_H8.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/firebase-D4m9vPI_.js">
+  <link rel="modulepreload" crossorigin href="./assets/three-B-NvSG5a.js">
+  <link rel="stylesheet" crossorigin href="./assets/index-BjQsFPwG.css">
+</head>
+<body>
+  <a href="#main-heading" class="skip-link visually-hidden">Skip to console</a>
+
+  <header class="meta">
+    <div class="meta-brand">
+      <p class="meta-name">Pocket Arcade DX <span class="meta-sub">is a</span></p>
+      <p class="meta-roles">
+        <span class="meta-line">\3D Handheld</span>
+        <span class="meta-line">\9 Cartridges</span>
+        <span class="meta-line">\ROM Player</span>
+      </p>
+    </div>
+
+    <div class="meta-right">
+      <p class="meta-visitor">
+        <span class="meta-line">You are player/visitor <span class="visitor-num" id="visitor-count">#1,338</span></span>
+      </p>
+      <p class="meta-status">
+        <span class="meta-line meta-cart-name" id="active-cart-label">CARTRIDGE MENU</span>
+      </p>
+    </div>
+  </header>
+
+  <nav class="settings-nav" id="settings-nav" aria-label="Console settings">
+    <button
+      type="button"
+      class="settings-trigger"
+      id="btn-settings-toggle"
+      aria-expanded="false"
+      aria-controls="settings-menu"
+      aria-label="Console Settings Menu"
+    >
+      <svg aria-hidden="true" viewBox="0 0 16 16" width="14" height="14">
+        <path fill="currentColor" d="M7 1h2v2.1a5 5 0 0 1 1.8.8l1.5-1.5 1.4 1.4-1.5 1.5a5 5 0 0 1 .8 1.8H15v2h-2.1a5 5 0 0 1-.8 1.8l1.5 1.5-1.4 1.4-1.5-1.5a5 5 0 0 1-1.8.8V15H7v-2.1a5 5 0 0 1-1.8-.8l-1.5 1.5-1.4-1.4 1.5-1.5A5 5 0 0 1 3.1 9H1V7h2.1a5 5 0 0 1 .8-1.8L2.4 3.7l1.4-1.4 1.5 1.5A5 5 0 0 1 7 3.1V1zm1 5a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/>
+      </svg>
+      <span class="settings-trigger-label">SETTINGS</span>
+    </button>
+
+    <div class="settings-menu toolbar" id="settings-menu">
+      <button type="button" class="tool-btn" id="btn-eject" aria-label="Return to Cartridge Menu">
+        <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16">
+          <path fill="currentColor" d="M8 2L2 9h12L8 2zm-6 9v2h12v-2H2z"/>
+        </svg>
+        <span class="tool-label">CARTS</span>
+      </button>
+
+      <button type="button" class="tool-btn" id="btn-library" aria-label="Open Cartridge Library, Play History, and Save Manager">
+        <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16">
+          <path fill="currentColor" d="M3 1h10v14H3V1zm2 2v4h6V3H5zm1 8h4v2H6v-2z"/>
+        </svg>
+        <span class="tool-label">HUB / HISTORY</span>
+      </button>
+
+      <button type="button" class="tool-btn" id="btn-shell" aria-label="Cycle Game Boy Shell Color">
+        <span class="shell-swatch" id="shell-swatch" aria-hidden="true"></span>
+        <span class="tool-label" id="shell-label">ATOMIC PURPLE</span>
+      </button>
+
+      <button type="button" class="tool-btn" id="btn-zoom" aria-pressed="false" aria-label="Zoom camera to screen">
+        <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16">
+          <path fill="currentColor" d="M2 2h5v2H4v3H2V2zm7 0h5v5h-2V4H9V2zM4 9v3h3v2H2V9h2zm8 3V9h2v5H9v-2h3z"/>
+        </svg>
+        <span class="tool-label">ZOOM</span>
+      </button>
+
+      <button type="button" class="tool-btn" id="btn-fullscreen" aria-pressed="false" aria-label="Toggle Fullscreen Play Mode">
+        <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16">
+          <path fill="currentColor" d="M1 1h6v2H3v4H1V1zm8 0h6v6h-2V3H9V1zM3 9v4h4v2H1V9h2zm10 4V9h2v6H9v-2h4z"/>
+        </svg>
+        <span class="tool-label">FULLSCREEN</span>
+      </button>
+
+      <button type="button" class="tool-btn" id="btn-mute" aria-pressed="false" aria-label="Mute sound">
+        <svg id="icon-sound-on" aria-hidden="true" viewBox="0 0 16 16" width="16" height="16">
+          <path fill="currentColor" d="M2 6h3l4-3v10l-4-3H2V6zm9-1h1v6h-1V5zm2-2h1v10h-1V3z"/>
+        </svg>
+        <svg id="icon-sound-off" aria-hidden="true" viewBox="0 0 16 16" width="16" height="16" hidden>
+          <path fill="currentColor" d="M2 6h3l4-3v10l-4-3H2V6zm9 1l2 2m0-2l-2 2" stroke="currentColor" stroke-width="1.5"/>
+        </svg>
+        <span class="tool-label" id="mute-label">SOUND ON</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Upper-Right Phone Tilt & Angle Monitor Toggle (Tap to toggle Tilt ON / OFF) -->
+  <button
+    type="button"
+    class="tilt-hud is-active"
+    id="tilt-hud"
+    aria-pressed="true"
+    aria-label="Toggle Phone Tilt Sensor On or Off"
+    title="Tap to toggle Phone Tilt ON / OFF"
+  >
+    <span class="tilt-bubble-ring" id="tilt-bubble-ring" aria-hidden="true">
+      <span class="tilt-bubble-crosshair"></span>
+      <span class="tilt-bubble-dot" id="tilt-bubble-dot"></span>
+    </span>
+    <span class="tilt-angle-readout" id="tilt-angle-readout">TILT ON · 0°,0°</span>
+  </button>
+
+  <main>
+    <h1 id="main-heading" class="visually-hidden" tabindex="-1">Pocket Arcade DX — Interactive 3D Game Boy Color</h1>
+
+    <div
+      id="stage"
+      class="stage"
+      tabindex="0"
+      role="application"
+      aria-roledescription="3D Game Boy Color Console"
+      aria-label="3D Game Boy Color Console"
+      aria-describedby="stage-help"
+    ></div>
+
+    <p id="stage-help" class="visually-hidden">
+      Press any key or click the console to power on. Use Arrow keys or W A S D to move the D-pad.
+      Press P, Z, or Enter for the A button. Press L, X, or Backspace for the B button.
+      Press Space for Start, and Shift for Select or to open the pause menu.
+    </p>
+
+    <div id="gate" class="gate">
+      <ol class="gate-steps">
+        <li>
+          Turn up your
+          <span class="gate-volume">
+            <svg class="gate-speaker" viewBox="0 0 16 16" width="24" height="24" aria-hidden="true">
+              <path fill="currentColor" d="M2 6h3l4-3v10l-4-3H2z"/>
+              <path class="gate-wave gate-wave-1" fill="currentColor" d="M11 5h1v6h-1z"/>
+              <path class="gate-wave gate-wave-2" fill="currentColor" d="M13 3h1v10h-1z"/>
+            </svg>
+            8-bit audio
+          </span>
+        </li>
+        <li>
+          <button type="button" class="gate-power-btn" id="btn-power-gate">
+            CLICK TO POWER ON <span class="gate-sub">or press any key</span>
+          </button>
+        </li>
+      </ol>
+    </div>
+
+    <div id="live-status" class="visually-hidden" role="status" aria-live="polite"></div>
+
+    <!-- Interactive Button Overlay Bound to 3D Game Boy Button Positions -->
+    <div class="touch-controls" id="touch-controls" aria-label="Game Boy button controls">
+      <button type="button" class="touch-btn touch-up" data-btn="up" aria-label="D-Pad Up"></button>
+      <button type="button" class="touch-btn touch-left" data-btn="left" aria-label="D-Pad Left"></button>
+      <button type="button" class="touch-btn touch-right" data-btn="right" aria-label="D-Pad Right"></button>
+      <button type="button" class="touch-btn touch-down" data-btn="down" aria-label="D-Pad Down"></button>
+      <button type="button" class="touch-pill" data-btn="select" aria-label="Select Button"></button>
+      <button type="button" class="touch-pill" data-btn="start" aria-label="Start Button"></button>
+      <button type="button" class="touch-action touch-b" data-btn="b" aria-label="B Button"></button>
+      <button type="button" class="touch-action touch-a" data-btn="a" aria-label="A Button"></button>
+    </div>
+  </main>
+
+  <aside class="keyhint" aria-label="Keyboard controls reference">
+    <div class="keyhint-group">
+      <p class="keyhint-title">MOVE</p>
+      <div class="keyhint-pads">
+        <span class="keyhint-pad">
+          <kbd class="keyhint-cap keyhint-up">↑</kbd>
+          <kbd class="keyhint-cap keyhint-left">←</kbd>
+          <kbd class="keyhint-cap keyhint-down">↓</kbd>
+          <kbd class="keyhint-cap keyhint-right">→</kbd>
+        </span>
+        <span class="keyhint-pad">
+          <kbd class="keyhint-cap keyhint-up">W</kbd>
+          <kbd class="keyhint-cap keyhint-left">A</kbd>
+          <kbd class="keyhint-cap keyhint-down">S</kbd>
+          <kbd class="keyhint-cap keyhint-right">D</kbd>
+        </span>
+      </div>
+      <p class="keyhint-note">Or click the 3D buttons on the Game Boy</p>
+    </div>
+
+    <div class="keyhint-group">
+      <p class="keyhint-title">BUTTONS</p>
+      <ul class="keyhint-rows" role="list">
+        <li class="keyhint-row">
+          <span class="keyhint-badge badge-a">A</span>
+          <span class="keyhint-keys">
+            <kbd class="keyhint-cap">P</kbd>
+            <span class="keyhint-or">/</span>
+            <kbd class="keyhint-cap">Z</kbd>
+            <span class="keyhint-or">/</span>
+            <kbd class="keyhint-cap">Enter</kbd>
+          </span>
+        </li>
+        <li class="keyhint-row">
+          <span class="keyhint-badge badge-b">B</span>
+          <span class="keyhint-keys">
+            <kbd class="keyhint-cap">L</kbd>
+            <span class="keyhint-or">/</span>
+            <kbd class="keyhint-cap">X</kbd>
+            <span class="keyhint-or">/</span>
+            <kbd class="keyhint-cap">Bksp</kbd>
+          </span>
+        </li>
+        <li class="keyhint-row">
+          <span class="keyhint-badge badge-meta">START</span>
+          <span class="keyhint-keys">
+            <kbd class="keyhint-cap">Space</kbd>
+          </span>
+        </li>
+        <li class="keyhint-row">
+          <span class="keyhint-badge badge-meta">SELECT</span>
+          <span class="keyhint-keys">
+            <kbd class="keyhint-cap">Shift</kbd>
+            <span class="keyhint-or">(Pause/Menu)</span>
+          </span>
+        </li>
+      </ul>
+    </div>
+  </aside>
+
+  <!-- Native Modal Dialog with declarative light-dismiss (closedby="any") -->
+  <dialog id="cartridge-dialog" class="cart-dialog" closedby="any" aria-labelledby="dialog-title">
+    <div class="dialog-inner">
+      <header class="dialog-header">
+        <div>
+          <h2 id="dialog-title" class="dialog-title">POCKET ARCADE HUB · LIBRARY, HISTORY &amp; CLOUD SAVE</h2>
+          <p class="dialog-subtitle">Switch cartridges, inspect your Play History &amp; Badges, export Memory Pak save codes, or sync via Firebase.</p>
+        </div>
+        <form method="dialog">
+          <button type="submit" class="dialog-close" aria-label="Close library dialog">✕ ESC</button>
+        </form>
+      </header>
+
+      <nav class="hub-tabs" aria-label="Console Hub Sections">
+        <button type="button" class="hub-tab" data-tab="library" aria-pressed="true">1. GAME PAKS &amp; ROM</button>
+        <button type="button" class="hub-tab" data-tab="history" aria-pressed="false">2. PLAY HISTORY &amp; BADGES</button>
+        <button type="button" class="hub-tab" data-tab="mempak" aria-pressed="false">3. MEMORY PAK &amp; CLOUD</button>
+      </nav>
+
+      <!-- TAB 1: Library & ROM Loader -->
+      <section class="dialog-section" id="tab-panel-library" aria-labelledby="builtin-heading">
+        <h3 id="builtin-heading" class="section-heading">BUILT-IN GAME PAK CARTRIDGES</h3>
+        <div class="cart-grid" id="dialog-cart-grid"></div>
+
+        <div class="rom-upload-section">
+          <h3 id="rom-heading" class="section-heading">LR35902 .GB / .GBC HARDWARE EMULATOR SLOT</h3>
+          <p class="rom-desc">
+            Have a <code>Pokemon Red.gb</code>, <code>Pokemon Blue.gb</code>, or homebrew Game Boy (<code>.gb</code> / <code>.gbc</code>) ROM file? Load it below to run it directly on the cycle-accurate LR35902 hardware core with battery-backed SRAM saves!
+          </p>
+          <div class="rom-controls">
+            <label for="rom-file-input" class="rom-upload-label">
+              INSERT .GB / .GBC FILE
+            </label>
+            <input
+              type="file"
+              id="rom-file-input"
+              name="rom_file"
+              class="visually-hidden"
+              accept=".gb,.gbc,.bin,application/octet-stream"
+            >
+            <span class="rom-filename" id="rom-filename-status">No custom ROM file loaded (Built-in Demo ROM active)</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: Play History, Responsive Stats Table, Activity Log & Badges -->
+      <section class="dialog-section" id="tab-panel-history" aria-labelledby="history-heading" hidden>
+        <h3 id="history-heading" class="section-heading">PER-CARTRIDGE PLAY HISTORY</h3>
+        <div tabindex="0" role="region" aria-labelledby="history-table-caption" class="table-wrapper">
+          <table class="data-table" id="history-table">
+            <caption id="history-table-caption" class="visually-hidden">Per-cartridge sessions, play duration, high score, and last played date</caption>
+            <thead>
+              <tr>
+                <th scope="col">Cartridge</th>
+                <th scope="col">Sessions</th>
+                <th scope="col">Play Time</th>
+                <th scope="col">High Score</th>
+                <th scope="col">Last Played</th>
+              </tr>
+            </thead>
+            <tbody id="history-table-body"></tbody>
+          </table>
+        </div>
+
+        <h3 class="section-heading">CONSOLE BADGES &amp; ACHIEVEMENTS</h3>
+        <div class="badge-grid" id="badge-grid"></div>
+
+        <h3 class="section-heading">RECENT ACTIVITY LOG</h3>
+        <ul class="activity-list" id="activity-list" role="list"></ul>
+      </section>
+
+      <!-- TAB 3: Memory Pak Export/Import & Firebase Cloud Sync / Leaderboards -->
+      <section class="dialog-section" id="tab-panel-mempak" aria-labelledby="mempak-heading" hidden>
+        <h3 id="mempak-heading" class="section-heading">PORTABLE MEMORY PAK SAVE CODE (NO ACCOUNT NEEDED)</h3>
+        <p class="rom-desc">
+          Copy your Memory Pak Save Code to move your Pocket Monsters party, high scores, and play history between your computer and phone!
+        </p>
+
+        <form id="callsign-form" class="hub-form" action="#callsign" method="POST">
+          <div class="form-field">
+            <label for="player-callsign-input">Player Callsign (shown on Leaderboards):</label>
+            <div class="inline-field-row">
+              <input
+                type="text"
+                id="player-callsign-input"
+                name="callsign"
+                maxlength="20"
+                autocomplete="username"
+                autocorrect="off"
+                autocapitalize="off"
+                spellcheck="false"
+                required
+              >
+              <button type="submit" class="action-btn">SAVE CALLSIGN</button>
+            </div>
+          </div>
+        </form>
+
+        <div class="mempak-actions">
+          <button type="button" class="action-btn" id="btn-copy-pak">COPY MEMORY PAK CODE</button>
+          <button type="button" class="action-btn" id="btn-download-pak">DOWNLOAD .JSON SAVE</button>
+        </div>
+
+        <form id="mempak-import-form" class="hub-form" action="#import-pak" method="POST">
+          <div class="form-field">
+            <label for="mempak-code-input">Memory Pak Save Code (<code>GBC-PAK-...</code>):</label>
+            <textarea
+              id="mempak-code-input"
+              name="mempak_code"
+              rows="3"
+              autocorrect="off"
+              autocapitalize="off"
+              spellcheck="false"
+              aria-describedby="mempak-feedback"
+            ></textarea>
+            <span id="mempak-feedback" class="form-feedback" aria-live="polite">Ready to export or import.</span>
+          </div>
+          <button type="submit" class="action-btn">RESTORE FROM MEMORY PAK CODE</button>
+        </form>
+
+        <hr class="hub-divider">
+
+        <h3 class="section-heading">CLOUD SYNC &amp; GLOBAL LEADERBOARD (FIREBASE)</h3>
+        <div class="cloud-box">
+          <p class="rom-desc" id="cloud-status-text">Checking cloud status...</p>
+          <div class="mempak-actions">
+            <button type="button" class="action-btn" id="btn-google-login">SIGN IN WITH GOOGLE</button>
+            <button type="button" class="action-btn" id="btn-guest-login">CLOUD GUEST SYNC</button>
+            <button type="button" class="action-btn" id="btn-cloud-sync-now">SYNC NOW</button>
+            <button type="button" class="action-btn" id="btn-cloud-logout" hidden>SIGN OUT</button>
+          </div>
+
+          <details class="cloud-config-details">
+            <summary>Connect Your Own Firebase Project (Free Spark Plan)</summary>
+            <form id="firebase-config-form" class="hub-form" action="#firebase-config" method="POST">
+              <div class="form-field">
+                <label for="firebase-config-input">Paste your <code>firebaseConfig</code> object from Firebase Console:</label>
+                <textarea
+                  id="firebase-config-input"
+                  name="firebase_config"
+                  rows="4"
+                  autocorrect="off"
+                  autocapitalize="off"
+                  spellcheck="false"
+                ></textarea>
+              </div>
+              <button type="submit" class="action-btn">CONNECT FIREBASE PROJECT</button>
+            </form>
+          </details>
+        </div>
+
+        <h3 class="section-heading">ARCADE LEADERBOARD (TOP SCORES)</h3>
+        <div tabindex="0" role="region" aria-labelledby="leaderboard-caption" class="table-wrapper">
+          <table class="data-table" id="leaderboard-table">
+            <caption id="leaderboard-caption" class="visually-hidden">Top global and local high scores</caption>
+            <thead>
+              <tr>
+                <th scope="col">Player</th>
+                <th scope="col">Game Pak</th>
+                <th scope="col">Score</th>
+                <th scope="col">Source</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboard-table-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </dialog>
+
+</body>
+</html>
