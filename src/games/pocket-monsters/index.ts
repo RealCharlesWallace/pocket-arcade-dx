@@ -428,13 +428,13 @@ const BUNDLED_LOAD_PROMISES: Partial<Record<VersionId, Promise<void>>> = {};
 async function ensureBundledRomAndSram(version: VersionId): Promise<void> {
   if (BUNDLED_ROM_CACHE[version] && BUNDLED_SLOT1_SRAM && BUNDLED_SLOT2_SRAM) return;
   if (!BUNDLED_LOAD_PROMISES[version]) {
-    const romUrl = version === 'RED' ? '/roms/pokemon-red.gb' : '/roms/pokemon-blue.gb';
+    const romUrl = version === 'RED' ? './roms/pokemon-red.gb' : './roms/pokemon-blue.gb';
     BUNDLED_LOAD_PROMISES[version] = (async () => {
       try {
         const [romRes, sram1Res, sram2Res] = await Promise.all([
           BUNDLED_ROM_CACHE[version] ? Promise.resolve(null) : fetch(romUrl),
-          BUNDLED_SLOT1_SRAM ? Promise.resolve(null) : fetch('/roms/pokemon-red-base.sav'),
-          BUNDLED_SLOT2_SRAM ? Promise.resolve(null) : fetch('/roms/pokemon-red-slot2.sav'),
+          BUNDLED_SLOT1_SRAM ? Promise.resolve(null) : fetch('./roms/pokemon-red-base.sav'),
+          BUNDLED_SLOT2_SRAM ? Promise.resolve(null) : fetch('./roms/pokemon-red-slot2.sav'),
         ]);
         if (romRes && romRes.ok) {
           BUNDLED_ROM_CACHE[version] = new Uint8Array(await romRes.arrayBuffer());
@@ -447,6 +447,10 @@ async function ensureBundledRomAndSram(version: VersionId): Promise<void> {
         }
       } catch (err) {
         console.warn(`Failed to fetch bundled ${version} ROM/SRAM:`, err);
+      } finally {
+        if (!BUNDLED_ROM_CACHE[version]) {
+          delete BUNDLED_LOAD_PROMISES[version];
+        }
       }
     })();
   }
@@ -878,7 +882,10 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
         ensureBundledRomAndSram(version).then(() => {
           state.romReady = Boolean(BUNDLED_ROM_CACHE[version]);
           loadAndSyncProfiles();
-          bootProfileIntoRealRom(state.profileCursor, target);
+          if (!bootProfileIntoRealRom(state.profileCursor, target)) {
+            state.mode = 'OVERWORLD';
+            state.ctx.audio.startBGM('monster_town');
+          }
         });
       }
     }
@@ -1806,6 +1813,30 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
       } else if (state.mode === 'BATTLE') {
         renderBattle(ctx);
       }
+    },
+
+    onScreenTap(x: number, y: number): boolean {
+      if (state.mode === 'PROFILES') {
+        if (y >= 22 && y <= 130) {
+          const slot = y < 58 ? 0 : y < 95 ? 1 : 2;
+          state.profileCursor = slot;
+        }
+        state.ctx.audio.playMenuSelect();
+        const chosen = state.profiles[state.profileCursor];
+        const target = chosen?.hasSave ? 'CONTINUE_GAME' : 'OAK_INTRO';
+        if (!bootProfileIntoRealRom(state.profileCursor, target)) {
+          ensureBundledRomAndSram(version).then(() => {
+            state.romReady = Boolean(BUNDLED_ROM_CACHE[version]);
+            loadAndSyncProfiles();
+            if (!bootProfileIntoRealRom(state.profileCursor, target)) {
+              state.mode = 'OVERWORLD';
+              state.ctx.audio.startBGM('monster_town');
+            }
+          });
+        }
+        return true;
+      }
+      return false;
     },
 
     cleanup() {

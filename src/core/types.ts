@@ -64,6 +64,7 @@ export interface GameCartridge {
   render: (ctx: CanvasRenderingContext2D) => void;
   cleanup?: () => void;
   onRomLoaded?: (name: string, bytes: Uint8Array) => void;
+  onScreenTap?: (x: number, y: number) => boolean;
 }
 
 export interface ShellTheme {

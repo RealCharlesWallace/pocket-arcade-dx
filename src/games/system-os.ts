@@ -162,6 +162,60 @@ export class GBCSystemOS {
     }
   }
 
+  /**
+   * Handles direct touch/click on the 3D Game Boy LCD screen (in 160x144 coordinates).
+   * Returns true if the tap was consumed by the OS or active cartridge menu/profile screen.
+   */
+  handleScreenTap(gbcX: number, gbcY: number): boolean {
+    if (this.phase === 'POWER_OFF') {
+      this.powerOn();
+      return true;
+    }
+    if (this.phase === 'BOOT') {
+      this.phase = 'CAROUSEL';
+      this.context.audio.startBGM('menu');
+      return true;
+    }
+    if (this.phase === 'CAROUSEL') {
+      if (gbcX < 28 && gbcY >= 18 && gbcY <= 102) {
+        this.selectedIndex =
+          (this.selectedIndex + CARTRIDGE_REGISTRY.length - 1) % CARTRIDGE_REGISTRY.length;
+        this.context.audio.playMenuMove();
+        this.onCartridgeChanged(this.getSelectedCartridge());
+      } else if (gbcX > 132 && gbcY >= 18 && gbcY <= 102) {
+        this.selectedIndex = (this.selectedIndex + 1) % CARTRIDGE_REGISTRY.length;
+        this.context.audio.playMenuMove();
+        this.onCartridgeChanged(this.getSelectedCartridge());
+      } else {
+        this.context.audio.playMenuSelect();
+        this.launchSelectedCartridge();
+      }
+      return true;
+    }
+    if (this.phase === 'PAUSED') {
+      if (gbcY >= 45 && gbcY < 108) {
+        this.pauseCursor = Math.max(0, Math.min(3, Math.floor((gbcY - 46) / 14)));
+      }
+      this.context.audio.playMenuSelect();
+      if (this.pauseCursor === 0) {
+        this.phase = 'PLAYING';
+      } else if (this.pauseCursor === 1) {
+        this.activeCartridge?.init(this.context);
+        this.phase = 'PLAYING';
+      } else if (this.pauseCursor === 2) {
+        this.returnToCarousel();
+      } else if (this.pauseCursor === 3) {
+        this.phase = 'PLAYING';
+        this.context.openRomFilePicker();
+      }
+      return true;
+    }
+    if (this.phase === 'PLAYING' && this.activeCartridge?.onScreenTap) {
+      return this.activeCartridge.onScreenTap(gbcX, gbcY);
+    }
+    return false;
+  }
+
   renderToScreenCanvas(ctx: CanvasRenderingContext2D): void {
     const fullW = GBC_WIDTH * GBC_SCALE;
     const fullH = GBC_HEIGHT * GBC_SCALE;

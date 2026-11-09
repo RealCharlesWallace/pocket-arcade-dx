@@ -35,12 +35,16 @@ async function ensureKirbyRom(): Promise<void> {
   if (!BUNDLED_KIRBY_PROMISE) {
     BUNDLED_KIRBY_PROMISE = (async () => {
       try {
-        const res = await fetch('/roms/kirby-tilt-n-tumble.gbc');
+        const res = await fetch('./roms/kirby-tilt-n-tumble.gbc');
         if (res.ok) {
           BUNDLED_KIRBY_ROM = new Uint8Array(await res.arrayBuffer());
         }
       } catch (err) {
         console.warn('Failed to fetch bundled Kirby Tilt n Tumble GBC ROM:', err);
+      } finally {
+        if (!BUNDLED_KIRBY_ROM) {
+          BUNDLED_KIRBY_PROMISE = null;
+        }
       }
     })();
   }
@@ -598,6 +602,27 @@ export function createKirbyTiltCartridge(): GameCartridge {
       } else {
         renderTiltCourse(ctx);
       }
+    },
+
+    onScreenTap(_x: number, y: number): boolean {
+      if (state.mode === 'PROFILES') {
+        if (y >= 22 && y <= 130) {
+          const slot = y < 58 ? 0 : y < 95 ? 1 : 2;
+          state.profileCursor = slot;
+        }
+        state.ctx.audio.playMenuSelect();
+        if (!bootProfileIntoRom(state.profileCursor, 'PLAY_GAME')) {
+          ensureKirbyRom().then(() => {
+            state.romReady = Boolean(BUNDLED_KIRBY_ROM);
+            if (!bootProfileIntoRom(state.profileCursor, 'PLAY_GAME')) {
+              initTiltCourse();
+              state.mode = 'TILT_COURSE';
+            }
+          });
+        }
+        return true;
+      }
+      return false;
     },
 
     cleanup() {

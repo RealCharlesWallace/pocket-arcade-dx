@@ -39,6 +39,7 @@ export class StageScene {
 
   private onVirtualButton: (btn: GBCButton, pressed: boolean) => void;
   private onPowerToggle: () => void;
+  private onScreenTap?: (gbcX: number, gbcY: number) => void;
 
   constructor(
     container: HTMLElement,
@@ -46,11 +47,13 @@ export class StageScene {
     options: {
       onVirtualButton: (btn: GBCButton, pressed: boolean) => void;
       onPowerToggle: () => void;
+      onScreenTap?: (gbcX: number, gbcY: number) => void;
     }
   ) {
     this.container = container;
     this.onVirtualButton = options.onVirtualButton;
     this.onPowerToggle = options.onPowerToggle;
+    this.onScreenTap = options.onScreenTap;
 
     this.gateEl = document.getElementById('gate');
     this.settingsNavEl = document.getElementById('settings-nav');
@@ -246,10 +249,11 @@ export class StageScene {
       if (!rect) continue;
       const dx = clientX - rect.x;
       const dy = clientY - rect.y;
-      const rx = Math.max(20, rect.w * 0.68);
-      const ry = Math.max(18, rect.h * 0.68);
+      const isPill = btn === 'select' || btn === 'start';
+      const rx = Math.max(isPill ? 28 : 26, rect.w * 0.72);
+      const ry = Math.max(isPill ? 24 : 26, rect.h * 0.72);
       const normDist = Math.hypot(dx / rx, dy / ry);
-      const isHit = normDist <= 1.05;
+      const isHit = normDist <= 1.08;
       if (isHit) {
         anyMatched = true;
         this.onVirtualButton(btn, true);
@@ -322,6 +326,21 @@ export class StageScene {
         return;
       }
 
+      // Check if pointer started inside any Action Button zone (A, B, SELECT, START) including label padding
+      const actionBtns: Array<'a' | 'b' | 'select' | 'start'> = ['a', 'b', 'select', 'start'];
+      for (const btn of actionBtns) {
+        const bRect = this.btnScreenRects[btn];
+        if (!bRect) continue;
+        const isPill = btn === 'select' || btn === 'start';
+        const rx = Math.max(isPill ? 28 : 26, bRect.w * 0.72);
+        const ry = Math.max(isPill ? 24 : 26, bRect.h * 0.72);
+        if (Math.hypot((e.clientX - bRect.x) / rx, (e.clientY - bRect.y) / ry) <= 1.08) {
+          this.actionPointerId = e.pointerId;
+          this.updateActionFromScreenPoint(e.clientX, e.clientY, btn);
+          return;
+        }
+      }
+
       const rect = container.getBoundingClientRect();
       this.pointerNormX = ((e.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1;
       this.pointerNormY = -((e.clientY - rect.top) / Math.max(1, rect.height)) * 2 + 1;
@@ -332,8 +351,17 @@ export class StageScene {
       const hits = this.raycaster.intersectObjects(this.gbc.interactiveMeshes, false);
       if (hits.length > 0) {
         const ctrl = hits[0].object.userData.control as string | undefined;
-        if (ctrl === 'power' || ctrl === 'screen') {
+        if (ctrl === 'power') {
           this.onPowerToggle();
+        } else if (ctrl === 'screen') {
+          const uv = hits[0].uv;
+          const gbcX = Math.max(0, Math.min(159, Math.round((uv?.x ?? 0.5) * 160)));
+          const gbcY = Math.max(0, Math.min(143, Math.round((1 - (uv?.y ?? 0.5)) * 144)));
+          if (this.onScreenTap) {
+            this.onScreenTap(gbcX, gbcY);
+          } else {
+            this.onPowerToggle();
+          }
         } else if (ctrl === 'up' || ctrl === 'down' || ctrl === 'left' || ctrl === 'right') {
           this.dpadPointerId = e.pointerId;
           this.updateDpadFromScreenPoint(e.clientX, e.clientY, ctrl);
@@ -486,9 +514,15 @@ export class StageScene {
       this.tempEdge.project(this.camera);
 
       const screenX = ((this.tempCenter.x + this.tempEdge.x) * 0.25 + 0.5) * cw;
-      const screenY = (-(this.tempCenter.y + this.tempEdge.y) * 0.25 + 0.5) * ch;
-      const pxW = Math.abs(this.tempEdge.x - this.tempCenter.x) * 0.5 * cw;
-      const pxH = Math.abs(this.tempEdge.y - this.tempCenter.y) * 0.5 * ch;
+      const rawScreenY = (-(this.tempCenter.y + this.tempEdge.y) * 0.25 + 0.5) * ch;
+      const rawPxW = Math.abs(this.tempEdge.x - this.tempCenter.x) * 0.5 * cw;
+      const rawPxH = Math.abs(this.tempEdge.y - this.tempCenter.y) * 0.5 * ch;
+
+      const isPill = btn === 'select' || btn === 'start';
+      const isActionRound = btn === 'a' || btn === 'b';
+      const screenY = isPill ? rawScreenY + 4 : rawScreenY;
+      const pxW = isPill ? Math.max(54, rawPxW) : isActionRound ? Math.max(52, rawPxW) : rawPxW;
+      const pxH = isPill ? Math.max(44, rawPxH) : isActionRound ? Math.max(52, rawPxH) : rawPxH;
       this.btnScreenRects[btn] = { x: screenX, y: screenY, w: pxW, h: pxH };
 
       const inViewport = screenY > 10 && screenY < ch - 12 && screenX > 4 && screenX < cw - 4;

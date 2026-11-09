@@ -130,13 +130,11 @@ function bootstrap(): void {
   };
 
   const enterMobilePlayMode = () => {
-    input.requestTiltPermission().catch(() => {});
     const isTouchOrMobile =
       window.matchMedia?.('(pointer: coarse)').matches ||
       window.innerWidth <= 900 ||
       'ontouchstart' in window;
     if (isTouchOrMobile) {
-      requestFullscreenSafe();
       window.scrollTo(0, 1);
     }
   };
@@ -186,8 +184,8 @@ function bootstrap(): void {
   );
 
   const powerOnConsole = () => {
-    enterMobilePlayMode();
     if (!systemOS.isPoweredOn()) {
+      enterMobilePlayMode();
       systemOS.powerOn();
       stageScene.getModel().setPowerState(true);
       gateEl.hidden = true;
@@ -197,11 +195,27 @@ function bootstrap(): void {
 
   stageScene = new StageScene(stageContainer, screenCanvas, {
     onVirtualButton: (btn, pressed) => {
-      powerOnConsole();
+      if (pressed) {
+        powerOnConsole();
+        audio.unlock();
+      }
       input.setVirtualButton(btn, pressed);
     },
     onPowerToggle: () => {
       powerOnConsole();
+      audio.unlock();
+    },
+    onScreenTap: (gbcX, gbcY) => {
+      audio.unlock();
+      if (!systemOS.isPoweredOn()) {
+        powerOnConsole();
+        return;
+      }
+      const consumed = systemOS.handleScreenTap(gbcX, gbcY);
+      if (!consumed) {
+        input.pulseButton('a', 110);
+        input.pulseButton('start', 110);
+      }
     },
   });
 

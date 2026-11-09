@@ -169,14 +169,13 @@ export class InputManager {
         }
       }
     });
+  }
 
-    const autoRequestOnGesture = () => {
-      if (!this.permissionRequested && this.tiltEnabled) {
-        this.requestTiltPermission().catch(() => {});
-      }
-    };
-    window.addEventListener('click', autoRequestOnGesture, { passive: true });
-    window.addEventListener('touchend', autoRequestOnGesture, { passive: true });
+  pulseButton(btn: GBCButton, durationMs = 110): void {
+    this.setVirtualButton(btn, true);
+    window.setTimeout(() => {
+      this.setVirtualButton(btn, false);
+    }, durationMs);
   }
 
   isTiltEnabled(): boolean {

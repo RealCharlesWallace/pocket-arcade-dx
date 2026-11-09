@@ -30,12 +30,16 @@ async function ensureFroggerRom(): Promise<void> {
   if (!BUNDLED_FROGGER_PROMISE) {
     BUNDLED_FROGGER_PROMISE = (async () => {
       try {
-        const res = await fetch('/roms/frogger.gbc');
+        const res = await fetch('./roms/frogger.gbc');
         if (res.ok) {
           BUNDLED_FROGGER_ROM = new Uint8Array(await res.arrayBuffer());
         }
       } catch (err) {
         console.warn('Failed to fetch bundled Frogger GBC ROM:', err);
+      } finally {
+        if (!BUNDLED_FROGGER_ROM) {
+          BUNDLED_FROGGER_PROMISE = null;
+        }
       }
     })();
   }
@@ -643,6 +647,28 @@ export function createFroggerCartridge(): GameCartridge {
       } else {
         renderArcade(ctx);
       }
+    },
+
+    onScreenTap(_x: number, y: number): boolean {
+      if (state.mode === 'PROFILES') {
+        if (y >= 22 && y <= 130) {
+          const slot = y < 58 ? 0 : y < 95 ? 1 : 2;
+          state.profileCursor = slot;
+        }
+        state.ctx.audio.playMenuSelect();
+        const chosen = state.profiles[state.profileCursor];
+        const target = chosen?.hasSave ? 'PLAY_GAME' : 'MAIN_MENU';
+        if (!bootProfileIntoRom(state.profileCursor, target)) {
+          ensureFroggerRom().then(() => {
+            state.romReady = Boolean(BUNDLED_FROGGER_ROM);
+            if (!bootProfileIntoRom(state.profileCursor, target)) {
+              startArcadeForSlot(state.profileCursor);
+            }
+          });
+        }
+        return true;
+      }
+      return false;
     },
 
     cleanup() {
