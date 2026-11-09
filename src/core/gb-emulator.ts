@@ -571,21 +571,6 @@ export class GBHardwareEmulator {
   step(dt: number, input: InputState): void {
     if (!this.gb) return;
 
-    if (this.audio) {
-      if (input.justPressed.a || input.justPressed.start) {
-        this.audio.playMenuSelect();
-      } else if (input.justPressed.b) {
-        this.audio.playMenuBack();
-      } else if (
-        input.justPressed.up ||
-        input.justPressed.down ||
-        input.justPressed.left ||
-        input.justPressed.right
-      ) {
-        this.audio.playMenuMove();
-      }
-    }
-
     for (const { btn, code } of GB_KEY_MAP) {
       const isDown = Boolean(input.held[btn]);
       if (isDown !== this.prevHeld[btn]) {
@@ -603,8 +588,8 @@ export class GBHardwareEmulator {
       slices++;
     }
 
-    if (this.audio && this.gb.memory) {
-      this.audio.syncHardwareAPU(this.gb.memory);
+    if (this.audio && this.gb) {
+      this.audio.syncHardwareAPU(this.gb);
     }
   }
 

@@ -26,6 +26,7 @@ export class StageScene {
   private pointerNormX = 0;
   private pointerNormY = 0;
   private dpadPointerId: number | null = null;
+  private dpadInitialBtn: GBCButton | null = null;
   private actionPointerId: number | null = null;
   private hoveredRaycastButton: GBCButton | null = null;
   private zoomedIn = false;
@@ -99,7 +100,9 @@ export class StageScene {
       const el = document.querySelector<HTMLElement>(`[data-btn="${btn}"]`);
       if (el) {
         this.overlayButtons[btn] = el;
-        el.addEventListener('pointerenter', () => this.gbc.setButtonHover(btn, true));
+        el.addEventListener('pointerenter', (e) => {
+          if (e.pointerType === 'mouse') this.gbc.setButtonHover(btn, true);
+        });
         el.addEventListener('pointerleave', () => this.gbc.setButtonHover(btn, false));
         el.addEventListener('pointerdown', (e) => {
           e.preventDefault();
@@ -113,6 +116,7 @@ export class StageScene {
           }
           if (btn === 'up' || btn === 'down' || btn === 'left' || btn === 'right') {
             this.dpadPointerId = e.pointerId;
+            this.dpadInitialBtn = btn;
             this.updateDpadFromScreenPoint(e.clientX, e.clientY, btn);
           } else {
             this.actionPointerId = e.pointerId;
@@ -129,8 +133,9 @@ export class StageScene {
   }
 
   private syncViewportSize(): void {
-    const w = this.container.clientWidth || window.innerWidth;
-    const h = this.container.clientHeight || window.innerHeight;
+    const vv = window.visualViewport;
+    const w = Math.round(vv?.width || this.container.clientWidth || window.innerWidth);
+    const h = Math.round(vv?.height || this.container.clientHeight || window.innerHeight);
     if (w <= 0 || h <= 0) return;
     if (w !== this.lastWidth || h !== this.lastHeight) {
       const prevAspect = this.lastWidth / Math.max(1, this.lastHeight);
@@ -141,7 +146,7 @@ export class StageScene {
       this.camera.updateProjectionMatrix();
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       this.renderer.setSize(w, h);
-      if (Math.abs(nextAspect - prevAspect) > 0.15) {
+      if (Math.abs(nextAspect - prevAspect) > 0.08) {
         this.updateCameraFraming(true);
       }
     }
@@ -196,12 +201,24 @@ export class StageScene {
     clientY: number,
     initialBtn?: GBCButton
   ): void {
+    if (initialBtn) {
+      this.dpadInitialBtn = initialBtn;
+    }
+
     const dx = clientX - this.dpadScreenX;
     const dy = clientY - this.dpadScreenY;
     const dist = Math.hypot(dx, dy);
-    const rad = Math.max(24, this.dpadRadiusPx);
+    const rad = Math.max(28, this.dpadRadiusPx);
 
-    if (dist < rad * 0.14 && !initialBtn) {
+    // If the user's finger slides off the D-Pad arrows onto the shell/screen, cleanly release!
+    if (dist > rad * 1.42) {
+      this.dpadInitialBtn = null;
+      this.releaseDpadButtons();
+      return;
+    }
+
+    const activeInitial = this.dpadInitialBtn;
+    if (dist < rad * 0.08 && !activeInitial) {
       this.gbc.setDpadSlideVector(0, 0);
       this.onVirtualButton('up', false);
       this.onVirtualButton('down', false);
@@ -212,28 +229,41 @@ export class StageScene {
 
     let ux = dist > 1 ? dx / dist : 0;
     let uy = dist > 1 ? dy / dist : 0;
-    if (dist < rad * 0.14 && initialBtn) {
-      ux = initialBtn === 'right' ? 1 : initialBtn === 'left' ? -1 : 0;
-      uy = initialBtn === 'down' ? 1 : initialBtn === 'up' ? -1 : 0;
+    if (dist < rad * 0.28 && activeInitial) {
+      ux = activeInitial === 'right' ? 1 : activeInitial === 'left' ? -1 : 0;
+      uy = activeInitial === 'down' ? 1 : activeInitial === 'up' ? -1 : 0;
+    } else if (dist >= rad * 0.28) {
+      this.dpadInitialBtn = null;
     }
 
-    const mag = Math.min(1, Math.max(0.55, dist / (rad * 0.85)));
+    const mag = Math.min(1, Math.max(0.65, dist / (rad * 0.80)));
     this.gbc.setDpadSlideVector(ux * mag, uy * mag);
 
-    // 8-way continuous angle sector detection (cardinals + 45-degree diagonals when sliding!)
-    const diagThreshold = 0.38268; // sin(22.5 deg) so each 45-degree cardinal & diagonal sector is active
+    // Responsive 4-cardinal + 45-degree corner diagonal sector detection
+    // 0.56 (~34 deg) gives each cardinal arrow (UP/DOWN/LEFT/RIGHT) a wide 68-degree pure zone
+    // so slightly off-center thumb presses never accidentally trigger perpendicular directions
+    const diagThreshold = 0.56;
     this.onVirtualButton('up', uy < -diagThreshold);
     this.onVirtualButton('down', uy > diagThreshold);
     this.onVirtualButton('left', ux < -diagThreshold);
     this.onVirtualButton('right', ux > diagThreshold);
   }
 
+  private clearAllHovers(): void {
+    for (const b of ALL_GBC_BUTTONS) {
+      this.gbc.setButtonHover(b, false);
+    }
+    this.hoveredRaycastButton = null;
+  }
+
   private releaseDpadButtons(): void {
+    this.dpadInitialBtn = null;
     this.gbc.setDpadSlideVector(0, 0);
     this.onVirtualButton('up', false);
     this.onVirtualButton('down', false);
     this.onVirtualButton('left', false);
     this.onVirtualButton('right', false);
+    this.clearAllHovers();
   }
 
   private updateActionFromScreenPoint(
@@ -280,10 +310,13 @@ export class StageScene {
     this.onVirtualButton('b', false);
     this.onVirtualButton('select', false);
     this.onVirtualButton('start', false);
+    this.clearAllHovers();
   }
 
   private bindEvents(container: HTMLElement): void {
     window.addEventListener('resize', () => this.syncViewportSize());
+    window.visualViewport?.addEventListener('resize', () => this.syncViewportSize());
+    window.visualViewport?.addEventListener('scroll', () => this.syncViewportSize());
     if (typeof ResizeObserver !== 'undefined') {
       const ro = new ResizeObserver(() => this.syncViewportSize());
       ro.observe(container);
@@ -296,6 +329,8 @@ export class StageScene {
       if (this.actionPointerId !== null && e.pointerId === this.actionPointerId) {
         this.updateActionFromScreenPoint(e.clientX, e.clientY);
       }
+
+      if (e.pointerType !== 'mouse') return;
 
       const rect = container.getBoundingClientRect();
       this.pointerNormX = ((e.clientX - rect.left) / Math.max(1, rect.width)) * 2 - 1;
@@ -320,7 +355,7 @@ export class StageScene {
     container.addEventListener('pointerdown', (e) => {
       // Check if pointer started anywhere inside the D-Pad circular zone (including diagonal corners!)
       const dpadDist = Math.hypot(e.clientX - this.dpadScreenX, e.clientY - this.dpadScreenY);
-      if (dpadDist <= this.dpadRadiusPx * 1.25) {
+      if (dpadDist <= this.dpadRadiusPx * 1.32) {
         this.dpadPointerId = e.pointerId;
         this.updateDpadFromScreenPoint(e.clientX, e.clientY);
         return;
@@ -364,6 +399,7 @@ export class StageScene {
           }
         } else if (ctrl === 'up' || ctrl === 'down' || ctrl === 'left' || ctrl === 'right') {
           this.dpadPointerId = e.pointerId;
+          this.dpadInitialBtn = ctrl;
           this.updateDpadFromScreenPoint(e.clientX, e.clientY, ctrl);
         } else if (ctrl) {
           const btn = ctrl as GBCButton;
@@ -382,10 +418,31 @@ export class StageScene {
         this.actionPointerId = null;
         this.releaseActionButtons();
       }
+      if (e.pointerType !== 'mouse') {
+        this.clearAllHovers();
+      }
     };
 
     window.addEventListener('pointerup', handlePointerEnd);
     window.addEventListener('pointercancel', handlePointerEnd);
+    document.addEventListener('pointerleave', handlePointerEnd);
+
+    // Belt-and-suspenders touch-end cleanup for iOS Safari edge gestures
+    const handleTouchAllEnd = (e: TouchEvent) => {
+      if (e.touches.length === 0) {
+        if (this.dpadPointerId !== null) {
+          this.dpadPointerId = null;
+          this.releaseDpadButtons();
+        }
+        if (this.actionPointerId !== null) {
+          this.actionPointerId = null;
+          this.releaseActionButtons();
+        }
+        this.clearAllHovers();
+      }
+    };
+    window.addEventListener('touchend', handleTouchAllEnd, { passive: true });
+    window.addEventListener('touchcancel', handleTouchAllEnd, { passive: true });
   }
 
   getModel(): GameBoyColor3D {
@@ -520,13 +577,29 @@ export class StageScene {
 
       const isPill = btn === 'select' || btn === 'start';
       const isActionRound = btn === 'a' || btn === 'b';
-      const screenY = isPill ? rawScreenY + 4 : rawScreenY;
-      const pxW = isPill ? Math.max(54, rawPxW) : isActionRound ? Math.max(52, rawPxW) : rawPxW;
-      const pxH = isPill ? Math.max(44, rawPxH) : isActionRound ? Math.max(52, rawPxH) : rawPxH;
-      this.btnScreenRects[btn] = { x: screenX, y: screenY, w: pxW, h: pxH };
+      const isDpadArrow = btn === 'up' || btn === 'down' || btn === 'left' || btn === 'right';
+      const dpadOffsetX = btn === 'left' ? -6 : btn === 'right' ? 6 : 0;
+      const dpadOffsetY = btn === 'up' ? -6 : btn === 'down' ? 6 : 0;
+      const adjScreenX = screenX + dpadOffsetX;
+      const screenY = isPill ? rawScreenY + 4 : rawScreenY + dpadOffsetY;
+      const pxW = isPill
+        ? Math.max(54, rawPxW)
+        : isActionRound
+          ? Math.max(52, rawPxW)
+          : isDpadArrow
+            ? Math.max(46, rawPxW)
+            : rawPxW;
+      const pxH = isPill
+        ? Math.max(44, rawPxH)
+        : isActionRound
+          ? Math.max(52, rawPxH)
+          : isDpadArrow
+            ? Math.max(46, rawPxH)
+            : rawPxH;
+      this.btnScreenRects[btn] = { x: adjScreenX, y: screenY, w: pxW, h: pxH };
 
-      const inViewport = screenY > 10 && screenY < ch - 12 && screenX > 4 && screenX < cw - 4;
-      el.style.left = `${screenX.toFixed(1)}px`;
+      const inViewport = screenY > 10 && screenY < ch - 12 && adjScreenX > 4 && adjScreenX < cw - 4;
+      el.style.left = `${adjScreenX.toFixed(1)}px`;
       el.style.top = `${screenY.toFixed(1)}px`;
       el.style.width = `${pxW.toFixed(1)}px`;
       el.style.height = `${pxH.toFixed(1)}px`;

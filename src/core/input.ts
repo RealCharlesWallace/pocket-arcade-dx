@@ -25,6 +25,26 @@ const KEY_MAP: Record<string, GBCButton> = {
 export class InputManager {
   private keyHeld: Record<GBCButton, boolean> = this.emptyRecord();
   private pointerHeld: Record<GBCButton, boolean> = this.emptyRecord();
+  private pointerPressTimeMs: Record<GBCButton, number> = {
+    up: 0,
+    down: 0,
+    left: 0,
+    right: 0,
+    a: 0,
+    b: 0,
+    start: 0,
+    select: 0,
+  };
+  private pointerMinHoldUntilMs: Record<GBCButton, number> = {
+    up: 0,
+    down: 0,
+    left: 0,
+    right: 0,
+    a: 0,
+    b: 0,
+    start: 0,
+    select: 0,
+  };
   private latchedPress: Record<GBCButton, boolean> = this.emptyRecord();
   private prevCombined: Record<GBCButton, boolean> = this.emptyRecord();
   private onButtonChangeCallbacks: Array<(btn: GBCButton, pressed: boolean) => void> = [];
@@ -269,9 +289,27 @@ export class InputManager {
   }
 
   setVirtualButton(btn: GBCButton, pressed: boolean): void {
+    const now = performance.now();
     if (pressed) {
       this.notifyAnyInput();
       this.latchedPress[btn] = true;
+      if (!this.pointerHeld[btn]) {
+        this.pointerPressTimeMs[btn] = now;
+        this.pointerMinHoldUntilMs[btn] = now + 45;
+      }
+      // If pressing a D-Pad direction, immediately clear any lingering min-hold on released directions
+      if (btn === 'up' || btn === 'down' || btn === 'left' || btn === 'right') {
+        for (const d of ['up', 'down', 'left', 'right'] as const) {
+          if (d !== btn && !this.pointerHeld[d]) {
+            this.pointerMinHoldUntilMs[d] = 0;
+          }
+        }
+      }
+    } else if (this.pointerHeld[btn]) {
+      // If the user held the button for >= 45ms and now released/moved off it, stop immediately (0ms tail)
+      if (now - this.pointerPressTimeMs[btn] >= 45) {
+        this.pointerMinHoldUntilMs[btn] = 0;
+      }
     }
     if (this.pointerHeld[btn] !== pressed) {
       this.pointerHeld[btn] = pressed;
@@ -304,9 +342,16 @@ export class InputManager {
 
     // Optional HTML5 Gamepad poll
     const padHeld = this.pollGamepad();
+    const now = performance.now();
 
     for (const b of ALL_BUTTONS) {
-      const isNowHeld = Boolean(this.keyHeld[b] || this.pointerHeld[b] || padHeld[b] || this.latchedPress[b]);
+      const isNowHeld = Boolean(
+        this.keyHeld[b] ||
+          this.pointerHeld[b] ||
+          padHeld[b] ||
+          this.latchedPress[b] ||
+          now < this.pointerMinHoldUntilMs[b]
+      );
       this.latchedPress[b] = false;
       held[b] = isNowHeld;
       justPressed[b] = isNowHeld && !this.prevCombined[b];

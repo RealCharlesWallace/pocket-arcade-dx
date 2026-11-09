@@ -656,7 +656,7 @@ export function createPokemonVersionCartridge(version: VersionId): GameCartridge
           : bootTarget;
       hwEmulator.fastForwardGen1Boot(target);
       state.mode = 'EMU_ROM';
-      state.ctx?.audio.startBGM('monster_town');
+      state.ctx?.audio.stopBGM();
       return true;
     }
     return false;

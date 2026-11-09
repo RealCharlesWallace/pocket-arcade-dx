@@ -226,7 +226,7 @@ export function createKirbyTiltCartridge(): GameCartridge {
             : bootTarget;
       hwEmulator.fastForwardKirbyBoot(slot, effectiveTarget);
       state.mode = 'EMU_ROM';
-      state.ctx?.audio.startBGM('kirby' as any);
+      state.ctx?.audio.stopBGM();
       return true;
     }
     return false;

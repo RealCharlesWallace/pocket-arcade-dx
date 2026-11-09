@@ -152,6 +152,7 @@ export class GBCSystemOS {
     if (this.phase === 'PLAYING' && this.activeCartridge) {
       // Pressing SELECT opens the Console Pause / Eject Menu
       if (input.justPressed.select) {
+        this.context.audio.silenceHardwareAPU();
         this.context.audio.playMenuMove();
         this.pauseCursor = 0;
         this.phase = 'PAUSED';

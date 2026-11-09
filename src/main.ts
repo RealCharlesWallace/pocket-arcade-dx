@@ -374,14 +374,28 @@ function bootstrap(): void {
       webkitFullscreenElement?: Element;
       webkitExitFullscreen?: () => Promise<void> | void;
     };
+    const docEl = document.documentElement as HTMLElement & {
+      webkitRequestFullscreen?: () => Promise<void> | void;
+    };
     if (document.fullscreenElement || doc.webkitFullscreenElement) {
       if (typeof document.exitFullscreen === 'function') {
         document.exitFullscreen().catch(() => {});
       } else if (typeof doc.webkitExitFullscreen === 'function') {
         doc.webkitExitFullscreen();
       }
-    } else {
+    } else if (
+      typeof docEl.requestFullscreen === 'function' ||
+      typeof docEl.webkitRequestFullscreen === 'function'
+    ) {
       requestFullscreenSafe();
+    } else {
+      // iOS Safari standard tab: toggle screen zoom + show quick instruction for hiding bottom URL bar
+      const nextZoom = !stageScene.isZoomedIn();
+      stageScene.setZoomedIn(nextZoom);
+      btnZoom.setAttribute('aria-pressed', String(nextZoom));
+      btnFullscreen.setAttribute('aria-pressed', String(nextZoom));
+      liveStatus.textContent =
+        'iPhone Full Screen: Tap Safari [aA] -> Hide Toolbar, or Share -> Add to Home Screen for zero URL bar.';
     }
     window.scrollTo(0, 1);
     audio.playButtonClick();

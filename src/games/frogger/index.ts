@@ -228,7 +228,7 @@ export function createFroggerCartridge(): GameCartridge {
       const target = bootTarget === 'PLAY_GAME' && !prof.hasSave ? 'MAIN_MENU' : bootTarget;
       hwEmulator.fastForwardFroggerBoot(target);
       state.mode = 'EMU_ROM';
-      state.ctx?.audio.startBGM('frogger' as any);
+      state.ctx?.audio.stopBGM();
       return true;
     }
     return false;

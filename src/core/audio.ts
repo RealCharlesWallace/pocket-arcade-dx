@@ -135,6 +135,26 @@ const TRACKS: Record<Exclude<BGMTrack, 'none'>, NoteStep[]> = {
   ],
 };
 
+export interface GBHardwareAPUState {
+  soundMasterEnabled?: boolean;
+  memory?: ArrayLike<number>;
+  channel1Enabled?: boolean;
+  channel1canPlay?: boolean;
+  channel1envelopeVolume?: number;
+  channel1frequency?: number;
+  channel2Enabled?: boolean;
+  channel2canPlay?: boolean;
+  channel2envelopeVolume?: number;
+  channel2frequency?: number;
+  channel3Enabled?: boolean;
+  channel3canPlay?: boolean;
+  channel3patternType?: number;
+  channel3frequency?: number;
+  channel4Enabled?: boolean;
+  channel4canPlay?: boolean;
+  channel4currentVolume?: number;
+}
+
 export class ChiptuneSynth {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
@@ -143,10 +163,16 @@ export class ChiptuneSynth {
   private currentTrack: BGMTrack = 'none';
   private stepIdx = 0;
   private stepTimer: number | null = null;
-  private lastApuFreq1 = 0;
-  private lastApuTime1 = 0;
-  private lastApuFreq2 = 0;
-  private lastApuTime2 = 0;
+
+  // Persistent non-overlapping hardware APU channels (Square 1, Square 2, Wave 3)
+  private apuOsc1: OscillatorNode | null = null;
+  private apuGain1: GainNode | null = null;
+  private apuOsc2: OscillatorNode | null = null;
+  private apuGain2: GainNode | null = null;
+  private apuOsc3: OscillatorNode | null = null;
+  private apuGain3: GainNode | null = null;
+  private prevCh4Vol = 0;
+  private lastCh4HitMs = 0;
 
   private htmlAudioUnlocked = false;
 
@@ -241,14 +267,14 @@ export class ChiptuneSynth {
       if (AudioCtx) {
         this.ctx = new AudioCtx();
         const master = this.ctx.createGain();
-        master.gain.value = 2.4;
+        master.gain.value = 1.25;
         if (typeof this.ctx.createDynamicsCompressor === 'function') {
           const comp = this.ctx.createDynamicsCompressor();
-          comp.threshold.value = -14;
-          comp.knee.value = 12;
-          comp.ratio.value = 4;
-          comp.attack.value = 0.003;
-          comp.release.value = 0.15;
+          comp.threshold.value = -12;
+          comp.knee.value = 10;
+          comp.ratio.value = 3;
+          comp.attack.value = 0.005;
+          comp.release.value = 0.12;
           master.connect(comp);
           comp.connect(this.ctx.destination);
         } else {
@@ -322,43 +348,136 @@ export class ChiptuneSynth {
     src.start(now);
   }
 
+  private ensureApuVoices(ctx: AudioContext): void {
+    if (this.apuOsc1 && this.apuGain1 && this.apuOsc2 && this.apuGain2 && this.apuOsc3 && this.apuGain3) {
+      return;
+    }
+    const dest = this.masterGain ?? ctx.destination;
+
+    this.apuOsc1 = ctx.createOscillator();
+    this.apuOsc1.type = 'square';
+    this.apuGain1 = ctx.createGain();
+    this.apuGain1.gain.value = 0;
+    this.apuOsc1.connect(this.apuGain1);
+    this.apuGain1.connect(dest);
+    this.apuOsc1.start();
+
+    this.apuOsc2 = ctx.createOscillator();
+    this.apuOsc2.type = 'square';
+    this.apuGain2 = ctx.createGain();
+    this.apuGain2.gain.value = 0;
+    this.apuOsc2.connect(this.apuGain2);
+    this.apuGain2.connect(dest);
+    this.apuOsc2.start();
+
+    this.apuOsc3 = ctx.createOscillator();
+    this.apuOsc3.type = 'triangle';
+    this.apuGain3 = ctx.createGain();
+    this.apuGain3.gain.value = 0;
+    this.apuOsc3.connect(this.apuGain3);
+    this.apuGain3.connect(dest);
+    this.apuOsc3.start();
+  }
+
+  silenceHardwareAPU(): void {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    this.apuGain1?.gain.setTargetAtTime(0, now, 0.006);
+    this.apuGain2?.gain.setTargetAtTime(0, now, 0.006);
+    this.apuGain3?.gain.setTargetAtTime(0, now, 0.006);
+    this.prevCh4Vol = 0;
+  }
+
   /**
-   * Synchronizes Game Boy LR35902 hardware APU sound registers (0xFF10..0xFF26)
-   * with Web Audio oscillator voices.
+   * Synchronizes live GameBoyCore hardware APU channel state (Square 1, Square 2, Wave 3, Noise 4)
+   * with 3 persistent, non-overlapping Web Audio voices.
    */
-  syncHardwareAPU(memory: ArrayLike<number>): void {
-    if (this.muted || !memory) return;
-    if (((memory[0xff26] ?? 0) & 0x80) === 0) return;
-
-    const now = performance.now();
-
-    // Channel 1 (Square 1)
-    const vol1 = ((memory[0xff12] ?? 0) >> 4) & 0x0f;
-    const rawFreq1 = (((memory[0xff14] ?? 0) & 0x07) << 8) | ((memory[0xff13] ?? 0) & 0xff);
-    if (vol1 > 0 && rawFreq1 > 64 && rawFreq1 < 2040) {
-      const freq1 = 131072 / (2048 - rawFreq1);
-      if (Math.abs(freq1 - this.lastApuFreq1) > 8 || now - this.lastApuTime1 > 95) {
-        this.playTone(freq1, 0.085, 'square', (vol1 / 15) * 0.065);
-        this.lastApuFreq1 = freq1;
-        this.lastApuTime1 = now;
-      }
-    } else {
-      this.lastApuFreq1 = 0;
+  syncHardwareAPU(coreOrMem: GBHardwareAPUState | ArrayLike<number>): void {
+    // Stop any background synth loop so it never overlaps with real Game Boy ROM audio
+    if (this.currentTrack !== 'none') {
+      this.stopBGM();
     }
 
-    // Channel 2 (Square 2)
-    const vol2 = ((memory[0xff17] ?? 0) >> 4) & 0x0f;
-    const rawFreq2 = (((memory[0xff19] ?? 0) & 0x07) << 8) | ((memory[0xff18] ?? 0) & 0xff);
-    if (vol2 > 0 && rawFreq2 > 64 && rawFreq2 < 2040) {
-      const freq2 = 131072 / (2048 - rawFreq2);
-      if (Math.abs(freq2 - this.lastApuFreq2) > 8 || now - this.lastApuTime2 > 95) {
-        this.playTone(freq2, 0.085, 'triangle', (vol2 / 15) * 0.06);
-        this.lastApuFreq2 = freq2;
-        this.lastApuTime2 = now;
-      }
-    } else {
-      this.lastApuFreq2 = 0;
+    if (this.muted || !coreOrMem) {
+      this.silenceHardwareAPU();
+      return;
     }
+
+    const ctx = this.ensureContext();
+    if (!ctx || (ctx.state as string) !== 'running') return;
+    this.ensureApuVoices(ctx);
+
+    const isCore = 'channel1envelopeVolume' in coreOrMem || 'soundMasterEnabled' in coreOrMem;
+    const core = isCore ? (coreOrMem as GBHardwareAPUState) : null;
+    const mem = core ? core.memory : (coreOrMem as ArrayLike<number>);
+
+    const masterOn = core
+      ? Boolean(core.soundMasterEnabled)
+      : Boolean(mem && ((mem[0xff26] ?? 0) & 0x80) !== 0);
+    if (!masterOn) {
+      this.silenceHardwareAPU();
+      return;
+    }
+
+    const t = ctx.currentTime;
+
+    // Channel 1 (Square 1 with hardware envelope & sweep)
+    const ch1Vol = core ? (core.channel1envelopeVolume ?? 0) : (((mem?.[0xff12] ?? 0) >> 4) & 0x0f);
+    const ch1Raw = core
+      ? (core.channel1frequency ?? 0)
+      : ((((mem?.[0xff14] ?? 0) & 0x07) << 8) | ((mem?.[0xff13] ?? 0) & 0xff));
+    const ch1On = core
+      ? Boolean(core.channel1Enabled && core.channel1canPlay && ch1Vol > 0 && ch1Raw > 64 && ch1Raw < 2042)
+      : Boolean(ch1Vol > 0 && ch1Raw > 64 && ch1Raw < 2042);
+
+    if (ch1On && this.apuOsc1 && this.apuGain1) {
+      const freq1 = Math.max(55, Math.min(4200, 131072 / (2048 - ch1Raw)));
+      this.apuOsc1.frequency.setTargetAtTime(freq1, t, 0.004);
+      this.apuGain1.gain.setTargetAtTime((ch1Vol / 15) * 0.042, t, 0.008);
+    } else {
+      this.apuGain1?.gain.setTargetAtTime(0, t, 0.006);
+    }
+
+    // Channel 2 (Square 2 with hardware envelope)
+    const ch2Vol = core ? (core.channel2envelopeVolume ?? 0) : (((mem?.[0xff17] ?? 0) >> 4) & 0x0f);
+    const ch2Raw = core
+      ? (core.channel2frequency ?? 0)
+      : ((((mem?.[0xff19] ?? 0) & 0x07) << 8) | ((mem?.[0xff18] ?? 0) & 0xff));
+    const ch2On = core
+      ? Boolean(core.channel2Enabled && core.channel2canPlay && ch2Vol > 0 && ch2Raw > 64 && ch2Raw < 2042)
+      : Boolean(ch2Vol > 0 && ch2Raw > 64 && ch2Raw < 2042);
+
+    if (ch2On && this.apuOsc2 && this.apuGain2) {
+      const freq2 = Math.max(55, Math.min(4200, 131072 / (2048 - ch2Raw)));
+      this.apuOsc2.frequency.setTargetAtTime(freq2, t, 0.004);
+      this.apuGain2.gain.setTargetAtTime((ch2Vol / 15) * 0.042, t, 0.008);
+    } else {
+      this.apuGain2?.gain.setTargetAtTime(0, t, 0.006);
+    }
+
+    // Channel 3 (Wave RAM bass/melody channel)
+    const ch3Pattern = core ? (core.channel3patternType ?? 4) : 4;
+    const ch3Raw = core ? (core.channel3frequency ?? 0) : 0;
+    const ch3On = Boolean(
+      core && core.channel3Enabled && core.channel3canPlay && ch3Pattern < 4 && ch3Raw > 64 && ch3Raw < 2042
+    );
+    if (ch3On && this.apuOsc3 && this.apuGain3) {
+      const freq3 = Math.max(45, Math.min(3200, 65536 / (2048 - ch3Raw)));
+      const levelMult = ch3Pattern === 0 ? 1.0 : ch3Pattern === 1 ? 0.5 : ch3Pattern === 2 ? 0.25 : 0;
+      this.apuOsc3.frequency.setTargetAtTime(freq3, t, 0.004);
+      this.apuGain3.gain.setTargetAtTime(levelMult * 0.048, t, 0.008);
+    } else {
+      this.apuGain3?.gain.setTargetAtTime(0, t, 0.006);
+    }
+
+    // Channel 4 (LFSR Percussion — fire short drum burst only on upward envelope edge)
+    const ch4Vol = core && core.channel4Enabled && core.channel4canPlay ? (core.channel4currentVolume ?? 0) : 0;
+    const nowMs = performance.now();
+    if (ch4Vol > this.prevCh4Vol + 2 && nowMs - this.lastCh4HitMs > 75) {
+      this.playNoise(0.028, (ch4Vol / 15) * 0.026);
+      this.lastCh4HitMs = nowMs;
+    }
+    this.prevCh4Vol = ch4Vol;
   }
 
   /** Classic Game Boy "Ba-ding!" boot chime */
@@ -422,7 +541,8 @@ export class ChiptuneSynth {
   }
 
   startBGM(track: BGMTrack): void {
-    if (this.currentTrack === track) return;
+    this.silenceHardwareAPU();
+    if (this.currentTrack === track && this.stepTimer !== null) return;
     this.stopBGM();
     this.currentTrack = track;
     this.stepIdx = 0;
@@ -436,6 +556,7 @@ export class ChiptuneSynth {
       window.clearTimeout(this.stepTimer);
       this.stepTimer = null;
     }
+    this.silenceHardwareAPU();
   }
 
   private scheduleNextNote(): void {
